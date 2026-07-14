@@ -6,7 +6,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Local data files
+# Local data
 master_clients.*
 client_phones.json
 scraped_contacts.csv
@@ -14,3 +14,7 @@ scraped_contacts.csv
 # IDE
 .vscode/
 .idea/
+
+# OS
+.DS_Store
+Thumbs.db

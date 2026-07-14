@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIC Agent Smart Reminders</title>
+    <meta name="description" content="Smart premium reminder dashboard for LIC agents. Upload your due list and send WhatsApp reminders instantly.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Hero Header -->
+        <header class="hero">
+            <div class="hero-badge">LIC Agent Tool</div>
+            <h1>📊 Premium Reminder Dashboard</h1>
+            <p class="hero-sub">Upload your monthly due list &bull; Auto-detect formats &bull; Send WhatsApp reminders</p>
+        </header>
+
+        <!-- Upload Zone -->
+        <section class="section" id="upload-section">
+            <div class="dropzone" id="dropzone">
+                <div class="dropzone-inner">
+                    <div class="dropzone-icon">📁</div>
+                    <h3>Drop your file here</h3>
+                    <p>or <span class="link">browse files</span></p>
+                    <span class="dropzone-badge">Excel &bull; CSV &bull; PDF</span>
+                </div>
+                <input type="file" id="file-input" accept=".xlsx,.csv,.pdf" hidden>
+            </div>
+        </section>
+
+        <!-- Alerts -->
+        <div id="alerts"></div>
+
+        <!-- Loading Spinner -->
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Parsing your file&hellip;</p>
+        </div>
+
+        <!-- Results (hidden until file parsed) -->
+        <section id="results" class="section hidden">
+            <!-- Metrics -->
+            <div class="metrics" id="metrics"></div>
+
+            <!-- Data Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>🗓️ This Month's Due List</h2>
+                </div>
+                <div class="table-wrap">
+                    <table id="data-table">
+                        <thead id="table-head"></thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Action Center -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>📲 Action Center</h2>
+                    <p class="card-sub">Expand each client to preview and send reminders</p>
+                </div>
+                <div id="action-list"></div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Built for LIC Agents &bull; Data stays in your browser &bull; Nothing is uploaded to any server</p>
+        </footer>
+    </div>
+
+    <!-- Libraries (CDN) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+    <script src="app.js"></script>
+</body>
+</html>
