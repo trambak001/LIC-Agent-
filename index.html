@@ -32,6 +32,17 @@
             </div>
         </section>
 
+        <!-- Master Database Panel -->
+        <div class="sidebar-panel" id="master-panel">
+            <h3>📂 Master Client Database</h3>
+            <div id="master-status"></div>
+            <p>Upload your complete client roster (CSV/Excel) with <strong>Policy Number</strong> and <strong>Phone Number</strong> columns. It will be saved in your browser for future use.</p>
+            <div class="sidebar-upload" id="master-dropzone">
+                📄 Click to upload Master Client List
+                <input type="file" id="master-input" accept=".xlsx,.csv" hidden>
+            </div>
+        </div>
+
         <!-- Alerts -->
         <div id="alerts"></div>
 
@@ -85,5 +96,6 @@
         }
     </script>
     <script src="app.js"></script>
+    <script src="solution1.js"></script>
 </body>
 </html>
