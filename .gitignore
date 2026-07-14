@@ -1,0 +1,16 @@
+# Virtual environment
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local data files
+master_clients.*
+client_phones.json
+scraped_contacts.csv
+
+# IDE
+.vscode/
+.idea/
