@@ -32,6 +32,17 @@
             </div>
         </section>
 
+        <!-- Portal Contact Import Panel -->
+        <div class="sidebar-panel" id="portal-panel">
+            <h3>🔍 Portal Contact Import</h3>
+            <div id="portal-status"></div>
+            <p>Export your client contact list from the <strong>LIC Agent Portal</strong> and upload it here. The app will extract phone numbers and match them to your due list by Policy Number.</p>
+            <div class="sidebar-upload" id="portal-dropzone">
+                📄 Click to upload Portal Export (CSV/Excel)
+                <input type="file" id="portal-input" accept=".xlsx,.csv" hidden>
+            </div>
+        </div>
+
         <!-- Alerts -->
         <div id="alerts"></div>
 
@@ -85,5 +96,6 @@
         }
     </script>
     <script src="app.js"></script>
+    <script src="solution2.js"></script>
 </body>
 </html>
