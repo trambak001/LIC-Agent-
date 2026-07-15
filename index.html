@@ -74,6 +74,32 @@
                 <div class="branch-banner-chip">Branch-wise premiums</div>
             </section>
 
+            <section class="branches-panel card" aria-labelledby="branches-title">
+                <div class="card-header">
+                    <h2 id="branches-title">Live Repo Branches</h2>
+                    <p class="card-sub">Fetched from GitHub so you can jump to every branch in this repository.</p>
+                </div>
+                <div class="branches-toolbar">
+                    <label class="branches-select-label" for="branch-select">Preview a branch</label>
+                    <div class="branches-toolbar-row">
+                        <select id="branch-select" class="branches-select"></select>
+                        <button type="button" id="preview-branch-button" class="browse-btn">Open preview</button>
+                    </div>
+                </div>
+                <div id="branches-status" class="branches-status">Loading branches from GitHub…</div>
+                <div id="branches-list" class="branches-list"></div>
+                <div class="branch-preview-shell">
+                    <div class="branch-preview-head">
+                        <div>
+                            <div class="branch-preview-title">Branch Preview</div>
+                            <div id="branch-preview-label" class="branch-preview-label">master</div>
+                        </div>
+                        <a id="branch-preview-open" class="branch-link branch-link-primary" href="#" target="_blank" rel="noreferrer">Open in GitHub</a>
+                    </div>
+                    <iframe id="branch-preview-frame" class="branch-preview-frame" title="Live branch preview" loading="lazy"></iframe>
+                </div>
+            </section>
+
             <div id="alerts"></div>
 
             <div id="loading" class="loading hidden">

@@ -12,6 +12,11 @@ const COLUMN_ALIASES = {
 };
 
 const REQUIRED_COLS = ['Client Name', 'Policy Number', 'Premium Amount', 'Due Date'];
+const GITHUB_REPO = 'trambak001/LIC-Agent-';
+const GITHUB_BRANCH_URL = `https://github.com/${GITHUB_REPO}/tree/`;
+const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/`;
+
+let loadedBranches = [];
 
 
 // ── Utilities ────────────────────────────────────────────────────
@@ -53,6 +58,157 @@ function normalizePhone(phone) {
     if (digits.length === 11 && digits.startsWith('0')) return `91${digits.slice(1)}`;
     if (digits.startsWith('91') && digits.length >= 12) return digits;
     return digits;
+}
+
+
+async function loadRepoBranches() {
+    const status = document.getElementById('branches-status');
+    const list = document.getElementById('branches-list');
+    const select = document.getElementById('branch-select');
+    if (!status || !list) return;
+
+    try {
+        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/branches?per_page=100`);
+        if (!response.ok) {
+            throw new Error(`GitHub API returned ${response.status}`);
+        }
+
+        const branches = await response.json();
+        const sorted = branches
+            .map(branch => ({
+                name: branch.name,
+                protected: Boolean(branch.protected),
+                url: `${GITHUB_BRANCH_URL}${encodeURIComponent(branch.name)}`,
+                rawIndexUrl: `${GITHUB_RAW_URL}${encodeURIComponent(branch.name)}/index.html`,
+            }))
+            .sort((a, b) => {
+                if (a.name === 'master') return -1;
+                if (b.name === 'master') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+        loadedBranches = sorted;
+
+        if (!sorted.length) {
+            status.textContent = 'No branches found for this repository.';
+            list.innerHTML = '';
+            if (select) select.innerHTML = '';
+            return;
+        }
+
+        status.textContent = `Found ${sorted.length} live branch${sorted.length === 1 ? '' : 'es'} in ${GITHUB_REPO}.`;
+        if (select) {
+            select.innerHTML = sorted.map(branch => `<option value="${escapeHtml(branch.name)}">${escapeHtml(branch.name)}</option>`).join('');
+            select.value = sorted[0].name;
+        }
+        list.innerHTML = sorted.map(branch => `
+            <article class="branch-item">
+                <div class="branch-item-main">
+                    <div class="branch-item-name">${escapeHtml(branch.name)}</div>
+                    <div class="branch-item-meta">${branch.protected ? 'Protected branch' : 'Standard branch'} from GitHub</div>
+                </div>
+                <div class="branch-item-actions">
+                    <a class="branch-link branch-link-primary" href="${branch.url}" target="_blank" rel="noreferrer">Open branch</a>
+                    <button type="button" class="branch-link branch-preview-trigger" data-branch="${escapeHtml(branch.name)}">Preview here</button>
+                    <a class="branch-link" href="${branch.url}/commits" target="_blank" rel="noreferrer">History</a>
+                </div>
+            </article>
+        `).join('');
+
+        list.querySelectorAll('.branch-preview-trigger').forEach(button => {
+            button.addEventListener('click', () => {
+                const branchName = button.getAttribute('data-branch');
+                if (branchName) openBranchPreview(branchName);
+            });
+        });
+
+        await openBranchPreview(sorted[0].name);
+    } catch (error) {
+        status.textContent = 'Could not load live branches from GitHub right now.';
+        list.innerHTML = `
+            <div class="alert alert-warning">
+                <span>⚠️</span>
+                <span>${escapeHtml(error.message)}</span>
+            </div>
+        `;
+    }
+}
+
+
+async function openBranchPreview(branchName) {
+    const branch = loadedBranches.find(item => item.name === branchName);
+    const iframe = document.getElementById('branch-preview-frame');
+    const label = document.getElementById('branch-preview-label');
+    const openLink = document.getElementById('branch-preview-open');
+
+    if (!branch || !iframe || !label || !openLink) return;
+
+    label.textContent = branch.name;
+    openLink.href = branch.url;
+
+    try {
+        const response = await fetch(branch.rawIndexUrl);
+        if (!response.ok) {
+            throw new Error(`Unable to fetch ${branch.name} index.html (${response.status})`);
+        }
+
+        const html = await response.text();
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+
+        const branchRoot = `${GITHUB_RAW_URL}${encodeURIComponent(branch.name)}/`;
+        const head = parsed.head;
+
+        const localStyles = [...parsed.querySelectorAll('link[rel="stylesheet"]')]
+            .filter(link => {
+                const href = link.getAttribute('href') || '';
+                return href && !/^https?:\/\//i.test(href) && !href.startsWith('//');
+            });
+
+        for (const link of localStyles) {
+            const href = link.getAttribute('href') || '';
+            const cssUrl = new URL(href, branchRoot).href;
+            const cssResponse = await fetch(cssUrl);
+            if (!cssResponse.ok) {
+                throw new Error(`Unable to fetch ${href} (${cssResponse.status})`);
+            }
+            const cssText = await cssResponse.text();
+            const styleTag = parsed.createElement('style');
+            styleTag.textContent = cssText;
+            link.replaceWith(styleTag);
+        }
+
+        const localScripts = [...parsed.querySelectorAll('script[src]')]
+            .filter(script => {
+                const src = script.getAttribute('src') || '';
+                return src && !/^https?:\/\//i.test(src) && !src.startsWith('//');
+            });
+
+        for (const script of localScripts) {
+            const src = script.getAttribute('src') || '';
+            const scriptUrl = new URL(src, branchRoot).href;
+            const scriptResponse = await fetch(scriptUrl);
+            if (!scriptResponse.ok) {
+                throw new Error(`Unable to fetch ${src} (${scriptResponse.status})`);
+            }
+            const scriptText = await scriptResponse.text();
+            const inlineScript = parsed.createElement('script');
+            inlineScript.textContent = scriptText;
+            script.replaceWith(inlineScript);
+        }
+
+        iframe.srcdoc = '<!doctype html>' + parsed.documentElement.outerHTML;
+    } catch (error) {
+        iframe.srcdoc = `
+            <!doctype html>
+            <html lang="en">
+            <head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:24px;color:#13233f}</style></head>
+            <body>
+                <h2>Preview unavailable</h2>
+                <p>${escapeHtml(error.message)}</p>
+            </body>
+            </html>
+        `;
+    }
 }
 
 
@@ -585,6 +741,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('file-input');
     const browseButton = document.getElementById('browse-button');
+    const branchSelect = document.getElementById('branch-select');
+    const previewBranchButton = document.getElementById('preview-branch-button');
 
     // Click to browse
     dropzone.addEventListener('click', () => fileInput.click());
@@ -602,6 +760,22 @@ document.addEventListener('DOMContentLoaded', () => {
     fileInput.addEventListener('change', (e) => {
         if (e.target.files[0]) handleFile(e.target.files[0]);
     });
+
+    if (branchSelect) {
+        branchSelect.addEventListener('change', () => {
+            const branchName = branchSelect.value;
+            if (branchName) openBranchPreview(branchName);
+        });
+    }
+
+    if (previewBranchButton) {
+        previewBranchButton.addEventListener('click', () => {
+            const branchName = branchSelect ? branchSelect.value : '';
+            if (branchName) openBranchPreview(branchName);
+        });
+    }
+
+    loadRepoBranches();
 
     // Drag & Drop
     dropzone.addEventListener('dragover', (e) => {
