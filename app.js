@@ -14,6 +14,48 @@ const COLUMN_ALIASES = {
 const REQUIRED_COLS = ['Client Name', 'Policy Number', 'Premium Amount', 'Due Date'];
 
 
+// ── Utilities ────────────────────────────────────────────────────
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+
+function slugify(value) {
+    const base = String(value || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return base || 'client';
+}
+
+
+function getFirstPhone(records) {
+    for (const record of records) {
+        const phone = String(record['Phone Number'] || '').trim();
+        if (phone && phone.toLowerCase() !== 'nan') return phone;
+    }
+    return '';
+}
+
+
+function normalizePhone(phone) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.length === 10) return `91${digits}`;
+    if (digits.length === 11 && digits.startsWith('0')) return `91${digits.slice(1)}`;
+    if (digits.startsWith('91') && digits.length >= 12) return digits;
+    return digits;
+}
+
+
 // ── File Parsing ─────────────────────────────────────────────────
 
 async function parseFile(file) {
@@ -36,15 +78,39 @@ function parseCSV(text) {
     const lines = text.trim().split(/\r?\n/);
     if (lines.length < 2) throw new Error('CSV file is empty or has no data rows.');
 
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    const parseLine = (line) => {
+        const cells = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    current += '"';
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (char === ',' && !inQuotes) {
+                cells.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        cells.push(current.trim());
+        return cells.map(cell => cell.replace(/^"|"$/g, ''));
+    };
+
+    const headers = parseLine(lines[0]);
     const rows = [];
 
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        // Simple CSV split (handles basic quoting)
-        const cells = line.match(/(".*?"|[^",]+|(?<=,)(?=,))/g) || [];
-        rows.push(cells.map(c => c.trim().replace(/^"|"$/g, '')));
+        rows.push(parseLine(line));
     }
 
     return { headers, rows };
@@ -255,10 +321,8 @@ function buildMessage(name, records) {
 
 
 function whatsappLink(phone, message) {
-    let cleaned = phone.replace(/[\s\-()]/g, '');
-    if (!cleaned.startsWith('+') && !cleaned.startsWith('91')) {
-        cleaned = '91' + cleaned;
-    }
+    const cleaned = normalizePhone(phone);
+    if (!cleaned) return '';
     return `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}`;
 }
 
@@ -327,19 +391,21 @@ function renderMetrics(data, groups) {
 
 
 function renderTable(data) {
-    const columns = REQUIRED_COLS.filter(c => data[0] && data[0][c] !== undefined);
-    if (data[0] && data[0]['Phone Number']) columns.push('Phone Number');
+    const columns = [...REQUIRED_COLS];
+    if (data.some(row => String(row['Phone Number'] || '').trim() && String(row['Phone Number']).toLowerCase() !== 'nan')) {
+        columns.push('Phone Number');
+    }
 
     const thead = document.getElementById('table-head');
     const tbody = document.getElementById('table-body');
 
-    thead.innerHTML = `<tr>${columns.map(c => `<th>${c}</th>`).join('')}</tr>`;
+    thead.innerHTML = `<tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
 
     tbody.innerHTML = data.map(row =>
         `<tr>${columns.map(c => {
             let val = row[c] ?? '';
             if (c === 'Premium Amount') val = '₹' + formatNum(val);
-            return `<td>${val}</td>`;
+            return `<td>${escapeHtml(val)}</td>`;
         }).join('')}</tr>`
     ).join('');
 }
@@ -349,18 +415,14 @@ function renderActions(groups, hasPhone) {
     const list = document.getElementById('action-list');
     list.innerHTML = '';
 
-    for (const [name, records] of groups) {
+    Array.from(groups.entries()).forEach(([name, records], index) => {
         const total = records.reduce((s, r) => s + (r['Premium Amount'] || 0), 0);
         const n = records.length;
         const tag = n === 1 ? 'policy' : 'policies';
         const msg = buildMessage(name, records);
+        const safeName = escapeHtml(name);
 
-        // Phone number
-        let phone = '';
-        if (hasPhone) {
-            phone = (records[0]['Phone Number'] || '').trim();
-            if (phone.toLowerCase() === 'nan') phone = '';
-        }
+        let phone = hasPhone ? getFirstPhone(records) : '';
 
         // Call hook for solution branches to inject phone
         if (typeof getPhoneForClient === 'function') {
@@ -368,22 +430,24 @@ function renderActions(groups, hasPhone) {
             if (injected) phone = injected;
         }
 
-        const cardId = `card-${name.replace(/\s+/g, '_')}`;
+        const waPhone = normalizePhone(phone);
+
+        const cardId = `card-${slugify(name)}-${index}`;
         const card = document.createElement('div');
         card.className = 'client-card';
         card.id = cardId;
 
         // Mini table for policies
         const miniRows = records.map(r =>
-            `<tr><td>${r['Policy Number']}</td><td>₹${formatNum(r['Premium Amount'])}</td><td>${r['Due Date']}</td></tr>`
+            `<tr><td>${escapeHtml(r['Policy Number'])}</td><td>₹${escapeHtml(formatNum(r['Premium Amount']))}</td><td>${escapeHtml(r['Due Date'])}</td></tr>`
         ).join('');
 
         // Phone-dependent buttons
         let actionButtons = '';
-        if (phone) {
-            const waLink = whatsappLink(phone, msg);
+        if (waPhone) {
+            const waLink = whatsappLink(waPhone, msg);
             actionButtons = `
-                <a href="${waLink}" target="_blank" class="btn btn-primary">💬 WhatsApp ${name.split(' ')[0]}</a>
+                <a href="${waLink}" target="_blank" class="btn btn-primary">💬 WhatsApp ${escapeHtml(name.split(' ')[0] || 'Client')}</a>
                 <button class="btn btn-secondary btn-copy" data-msg="${cardId}">📋 Copy Message</button>
             `;
         } else {
@@ -402,7 +466,7 @@ function renderActions(groups, hasPhone) {
         card.innerHTML = `
             <div class="client-header" onclick="toggleCard('${cardId}')">
                 <div class="client-info">
-                    <span class="client-name">${name}</span>
+                    <span class="client-name">${safeName}</span>
                     <div class="client-tags">
                         <span class="tag tag-policies">${n} ${tag}</span>
                         <span class="tag tag-amount">₹${formatNum(total)}</span>
@@ -418,14 +482,14 @@ function renderActions(groups, hasPhone) {
                     </table>
                     ${phoneInputHTML}
                     <div class="msg-label">Message Preview</div>
-                    <textarea class="msg-preview" id="msg-${cardId}">${msg}</textarea>
+                    <textarea class="msg-preview" id="msg-${cardId}">${escapeHtml(msg)}</textarea>
                     <div class="btn-row">${actionButtons}</div>
                 </div>
             </div>
         `;
 
         list.appendChild(card);
-    }
+    });
 
     // Render extra UI from solution branches
     if (typeof renderAfterActions === 'function') {
@@ -509,6 +573,8 @@ async function handleFile(file) {
         console.error(err);
     } finally {
         hideLoading();
+        const fileInput = document.getElementById('file-input');
+        if (fileInput) fileInput.value = '';
     }
 }
 
@@ -518,9 +584,19 @@ async function handleFile(file) {
 document.addEventListener('DOMContentLoaded', () => {
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('file-input');
+    const browseButton = document.getElementById('browse-button');
 
     // Click to browse
     dropzone.addEventListener('click', () => fileInput.click());
+    browseButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('click', () => {
+        fileInput.value = '';
+    });
 
     // File selected
     fileInput.addEventListener('change', (e) => {

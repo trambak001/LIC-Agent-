@@ -3,79 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LIC Agent Smart Reminders</title>
-    <meta name="description" content="Smart premium reminder dashboard for LIC agents. Upload your due list and send WhatsApp reminders instantly.">
+    <title>LIC Branch Premium Dashboard</title>
+    <meta name="description" content="Branch-ready premium reminder dashboard for LIC agents. Upload due lists, review policy data, and send WhatsApp reminders instantly.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app">
-        <!-- Hero Header -->
-        <header class="hero">
-            <div class="hero-badge">LIC Agent Tool</div>
-            <h1>📊 Premium Reminder Dashboard</h1>
-            <p class="hero-sub">Upload your monthly due list &bull; Auto-detect formats &bull; Send WhatsApp reminders</p>
-        </header>
-
-        <!-- Upload Zone -->
-        <section class="section" id="upload-section">
-            <div class="dropzone" id="dropzone">
-                <div class="dropzone-inner">
-                    <div class="dropzone-icon">📁</div>
-                    <h3>Drop your file here</h3>
-                    <p>or <span class="link">browse files</span></p>
-                    <span class="dropzone-badge">Excel &bull; CSV &bull; PDF</span>
-                </div>
-                <input type="file" id="file-input" accept=".xlsx,.csv,.pdf" hidden>
+    <div class="app-shell">
+        <div class="brand-bar">
+            <div class="brand-mark" aria-hidden="true">LIC</div>
+            <div class="brand-copy">
+                <div class="brand-name">Life Insurance Corporation of India</div>
+                <div class="brand-note">Branch premium reminder workspace</div>
             </div>
-        </section>
-
-        <!-- Alerts -->
-        <div id="alerts"></div>
-
-        <!-- Loading Spinner -->
-        <div id="loading" class="loading hidden">
-            <div class="spinner"></div>
-            <p>Parsing your file&hellip;</p>
+            <div class="brand-pills">
+                <span class="brand-pill">All branches</span>
+                <span class="brand-pill">Local browser processing</span>
+                <span class="brand-pill">WhatsApp ready</span>
+            </div>
         </div>
 
-        <!-- Results (hidden until file parsed) -->
-        <section id="results" class="section hidden">
-            <!-- Metrics -->
-            <div class="metrics" id="metrics"></div>
+        <main class="app">
+            <header class="hero">
+                <div class="hero-copy">
+                    <div class="hero-badge">LIC style dashboard</div>
+                    <h1>Premium Reminder Dashboard</h1>
+                    <p class="hero-sub">Upload branch due lists, review policy data, and send WhatsApp reminders with a clean LIC-inspired interface.</p>
+                </div>
+                <aside class="hero-panel" aria-label="Workspace highlights">
+                    <div class="hero-panel-title">Branch-ready workflow</div>
+                    <div class="hero-stats">
+                        <div class="hero-stat">
+                            <span class="hero-stat-value">All</span>
+                            <span class="hero-stat-label">branches supported</span>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="hero-stat-value">3</span>
+                            <span class="hero-stat-label">file formats</span>
+                        </div>
+                        <div class="hero-stat">
+                            <span class="hero-stat-value">100%</span>
+                            <span class="hero-stat-label">browser-only</span>
+                        </div>
+                    </div>
+                </aside>
+            </header>
 
-            <!-- Data Table -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>🗓️ This Month's Due List</h2>
+            <section class="section" id="upload-section">
+                <div class="dropzone" id="dropzone">
+                    <div class="dropzone-inner">
+                        <div class="dropzone-icon">📁</div>
+                        <h3>Drop your file here</h3>
+                        <p>or choose a file to begin</p>
+                        <div class="dropzone-actions">
+                            <button type="button" class="browse-btn" id="browse-button">Choose file</button>
+                            <span class="dropzone-badge">Excel &bull; CSV &bull; PDF</span>
+                        </div>
+                    </div>
+                    <input type="file" id="file-input" accept=".xlsx,.csv,.pdf" hidden>
                 </div>
-                <div class="table-wrap">
-                    <table id="data-table">
-                        <thead id="table-head"></thead>
-                        <tbody id="table-body"></tbody>
-                    </table>
+            </section>
+
+            <section class="branch-banner" aria-label="Branch coverage">
+                <div>
+                    <div class="branch-banner-title">Built for every LIC branch</div>
+                    <div class="branch-banner-text">Use one workflow across branch offices, divisions, and agent lists without changing your process.</div>
                 </div>
+                <div class="branch-banner-chip">Branch-wise premiums</div>
+            </section>
+
+            <div id="alerts"></div>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Parsing your file&hellip;</p>
             </div>
 
-            <!-- Action Center -->
-            <div class="card">
-                <div class="card-header">
-                    <h2>📲 Action Center</h2>
-                    <p class="card-sub">Expand each client to preview and send reminders</p>
-                </div>
-                <div id="action-list"></div>
-            </div>
-        </section>
+            <section id="results" class="section hidden">
+                <div class="metrics" id="metrics"></div>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <p>Built for LIC Agents &bull; Data stays in your browser &bull; Nothing is uploaded to any server</p>
-        </footer>
+                <div class="card">
+                    <div class="card-header">
+                        <h2>This Month's Due List</h2>
+                        <p class="card-sub">A clean branch view of the parsed records</p>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="data-table">
+                            <thead id="table-head"></thead>
+                            <tbody id="table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Action Center</h2>
+                        <p class="card-sub">Expand each client to preview and send reminders</p>
+                    </div>
+                    <div id="action-list"></div>
+                </div>
+            </section>
+
+            <footer class="footer">
+                <p>Built for LIC agents &bull; Data stays in your browser &bull; Nothing is uploaded to any server</p>
+            </footer>
+        </main>
     </div>
 
-    <!-- Libraries (CDN) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
