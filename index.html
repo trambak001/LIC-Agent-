@@ -84,6 +84,35 @@
                 </div>
             </div>
 
+            <section class="section branches-panel" aria-labelledby="branches-panel-title">
+                <div class="card-header branches-header">
+                    <div>
+                        <h2 id="branches-panel-title">Live Repo Branches</h2>
+                        <p class="card-sub">Fetched from GitHub so you can jump to every branch in this repository.</p>
+                    </div>
+                    <div class="branches-toolbar">
+                        <label class="branches-select-wrap" for="branch-select">
+                            <span class="sr-only">Preview a branch</span>
+                            <select id="branch-select" class="branches-select" aria-label="Preview a branch"></select>
+                        </label>
+                        <button type="button" id="preview-branch-button" class="browse-btn branches-preview-button">Open preview</button>
+                    </div>
+                </div>
+                <p id="branches-status" class="branches-status">Loading branches from GitHub…</p>
+                <div id="branches-list" class="branches-list"></div>
+                <div class="branch-preview-shell">
+                    <div class="branch-preview-head">
+                        <div>
+                            <div class="branch-preview-kicker">Branch Preview</div>
+                            <div class="branch-preview-label" id="branch-preview-label">master</div>
+                        </div>
+                        <a id="branch-preview-open" class="branch-preview-open" href="https://github.com/trambak001/LIC-Agent-/tree/master" target="_blank" rel="noreferrer">Open in GitHub</a>
+                    </div>
+                    <iframe id="branch-preview-frame" class="branch-preview-frame" title="Branch preview" loading="lazy"></iframe>
+                </div>
+            </section>
+
+            <!-- Alerts -->
             <div id="alerts"></div>
 
             <div id="loading" class="loading hidden">
