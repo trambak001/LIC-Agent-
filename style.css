@@ -807,6 +807,178 @@ tbody tr:nth-child(even):hover { background: var(--bg-hover); }
     border-top: 1px solid rgba(11,45,93,.08);
 }
 
+.branches-panel {
+    display: grid;
+    gap: .9rem;
+    padding: 1.1rem;
+    border-radius: var(--radius-xl);
+    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(245,249,255,.98));
+}
+
+.branches-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0;
+}
+
+.branches-toolbar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+}
+
+.branches-select-wrap {
+    position: relative;
+}
+
+.branches-select {
+    appearance: none;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: .78rem 2.2rem .78rem 1rem;
+    background: var(--bg-input);
+    color: var(--text);
+    font: inherit;
+    min-width: 220px;
+}
+
+.branches-preview-button {
+    padding-inline: 1.15rem;
+}
+
+.branches-status {
+    font-size: .9rem;
+    color: var(--text-sec);
+}
+
+.branches-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: .9rem;
+}
+
+.branch-item {
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 1rem;
+    background: linear-gradient(180deg, #fff, #f8fbff);
+    display: grid;
+    gap: .9rem;
+}
+
+.branch-item-name {
+    font-weight: 700;
+    color: var(--accent-deep);
+    word-break: break-word;
+}
+
+.branch-item-desc {
+    color: var(--text-muted);
+    font-size: .85rem;
+    margin-top: .25rem;
+}
+
+.branch-item-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .55rem;
+}
+
+.branch-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: .55rem .8rem;
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(11,78,162,.08);
+    border: 1px solid rgba(11,78,162,.14);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.branch-link-button {
+    font: inherit;
+}
+
+.branch-preview-shell {
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.branch-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .95rem 1rem;
+    background: linear-gradient(90deg, rgba(11,78,162,.08), rgba(201,155,45,.08));
+    border-bottom: 1px solid rgba(11,45,93,.08);
+}
+
+.branch-preview-kicker {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.branch-preview-label {
+    font-family: var(--heading);
+    font-size: 1.45rem;
+    line-height: 1;
+    color: var(--accent-deep);
+    margin-top: .15rem;
+}
+
+.branch-preview-open {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: .62rem .9rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    font-size: .8rem;
+    font-weight: 700;
+}
+
+.branch-preview-frame {
+    width: 100%;
+    height: min(72vh, 860px);
+    border: 0;
+    background: #fff;
+}
+
+.branches-empty {
+    padding: 1rem;
+    border-radius: 18px;
+    background: var(--bg-input);
+    color: var(--text-sec);
+    border: 1px dashed var(--border);
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 @media (max-width: 900px) {
     .hero,
     .brand-bar {
@@ -852,4 +1024,17 @@ tbody tr:nth-child(even):hover { background: var(--bg-hover); }
     .btn,
     .browse-btn { width: 100%; }
     .branch-banner { flex-direction: column; align-items: flex-start; }
+    .branches-header,
+    .branch-preview-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .branches-select {
+        min-width: 100%;
+    }
+
+    .branch-preview-frame {
+        height: 68vh;
+    }
 }
