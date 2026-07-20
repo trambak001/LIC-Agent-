@@ -15,8 +15,13 @@ const REQUIRED_COLS = ['Client Name', 'Policy Number', 'Premium Amount', 'Due Da
 const GITHUB_REPO = 'trambak001/LIC-Agent-';
 const GITHUB_BRANCH_URL = `https://api.github.com/repos/${GITHUB_REPO}/branches?per_page=100`;
 const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/`;
+const STORAGE_KEY = 'licDashboardStateV1';
 
 const loadedBranches = [];
+let globalData = [];
+let filteredData = [];
+let globalGroups = new Map();
+let filteredGroups = new Map();
 
 
 // ── Utilities ────────────────────────────────────────────────────
@@ -42,6 +47,15 @@ function slugify(value) {
 }
 
 
+function escapeJsString(value) {
+    return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n');
+}
+
+
 function getFirstPhone(records) {
     for (const record of records) {
         const phone = String(record['Phone Number'] || '').trim();
@@ -49,6 +63,222 @@ function getFirstPhone(records) {
     }
     return '';
 }
+
+
+function getPhoneForClient(name, records) {
+    return getFirstPhone(records);
+}
+
+
+function mergePhoneNumbers(data) {
+    return data;
+}
+
+
+function renderPhoneInput(name, records, currentPhone, cardId) {
+    return `
+        <div class="phone-row">
+            <label class="msg-label" style="margin:0; flex-shrink:0;">Client Phone:</label>
+            <input
+                type="tel"
+                class="phone-input"
+                placeholder="e.g. 9876543210"
+                value="${escapeHtml(currentPhone || '')}"
+                onchange="updateClientPhone('${escapeJsString(cardId)}', '${escapeJsString(name)}', this.value)">
+        </div>
+    `;
+}
+
+
+function renderAfterActions(groups) {
+    return groups;
+}
+
+
+function saveDashboardState(fileName = '') {
+    try {
+        const payload = {
+            version: 1,
+            fileName,
+            savedAt: new Date().toISOString(),
+            data: globalData,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+        console.error('Unable to save dashboard state', error);
+    }
+}
+
+
+function loadDashboardState() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !Array.isArray(parsed.data)) return null;
+        return parsed;
+    } catch (error) {
+        console.error('Unable to read cached dashboard state', error);
+        return null;
+    }
+}
+
+
+function buildExportColumns(data) {
+    const cols = [...REQUIRED_COLS];
+    if (data.some(row => String(row['Phone Number'] || '').trim() && String(row['Phone Number']).toLowerCase() !== 'nan')) {
+        cols.push('Phone Number');
+    }
+    return cols;
+}
+
+
+function toCsv(data, columns) {
+    const escapeCsv = (value) => {
+        const raw = value == null ? '' : String(value);
+        return /[",\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+    };
+
+    const lines = [columns.map(escapeCsv).join(',')];
+    for (const row of data) {
+        lines.push(columns.map(col => escapeCsv(row[col])).join(','));
+    }
+    return lines.join('\n');
+}
+
+
+function downloadTextFile(content, fileName, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+
+function renderDashboard(data, query = '') {
+    globalData = data;
+    globalGroups = groupByClient(globalData);
+    applySearch(query);
+}
+
+
+function applySearch(query = '') {
+    const normalized = String(query || '').toLowerCase().trim();
+    filteredData = !normalized
+        ? [...globalData]
+        : globalData.filter(item =>
+            String(item['Client Name'] || '').toLowerCase().includes(normalized) ||
+            String(item['Policy Number'] || '').toLowerCase().includes(normalized) ||
+            String(item['Premium Amount'] || '').toLowerCase().includes(normalized) ||
+            String(item['Due Date'] || '').toLowerCase().includes(normalized)
+        );
+
+    filteredGroups = groupByClient(filteredData);
+    const hasPhone = filteredData.some(d => d['Phone Number'] && String(d['Phone Number']).toLowerCase() !== 'nan');
+
+    renderMetrics(filteredData, filteredGroups);
+    renderTable(filteredData);
+    renderActions(filteredGroups, hasPhone);
+    showResults();
+}
+
+
+function requestManualColumnMap(headers, missingCols) {
+    const options = headers.map((h, i) => `${i + 1}. ${h}`).join('\n');
+    const manualMap = {};
+
+    for (const missing of missingCols) {
+        const answer = window.prompt(
+            `Could not auto-detect "${missing}" from this file.\n\nChoose the matching column number:\n${options}\n\nLeave blank to skip.`,
+            ''
+        );
+        if (!answer || !answer.trim()) continue;
+
+        const idx = Number.parseInt(answer.trim(), 10) - 1;
+        if (Number.isInteger(idx) && idx >= 0 && idx < headers.length) {
+            manualMap[headers[idx]] = missing;
+        }
+    }
+
+    return manualMap;
+}
+
+
+function hydrateDashboardFromCache() {
+    const cached = loadDashboardState();
+    if (!cached) return;
+
+    const data = mergePhoneNumbers(cached.data);
+    if (!Array.isArray(data) || !data.length) return;
+
+    renderDashboard(data);
+    showAlert('info', `Restored ${data.length} cached records${cached.fileName ? ` from ${escapeHtml(cached.fileName)}` : ''}.`);
+}
+
+
+window.updateClientPhone = function(cardId, clientName, newPhone) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+
+    const cleanPhone = normalizePhone(newPhone);
+    const msgText = card.querySelector('textarea.msg-preview')?.value || '';
+    const btnRow = card.querySelector('.btn-row');
+    if (!btnRow) return;
+
+    const firstName = String(clientName || 'Client').trim().split(/\s+/)[0] || 'Client';
+    if (cleanPhone) {
+        const waLink = whatsappLink(cleanPhone, msgText);
+        btnRow.innerHTML = `
+            <a href="${waLink}" target="_blank" class="btn btn-primary">💬 WhatsApp ${escapeHtml(firstName)}</a>
+            <button class="btn btn-secondary btn-copy" data-msg="${cardId}">📋 Copy Message</button>
+        `;
+    } else {
+        btnRow.innerHTML = `
+            <button class="btn btn-secondary btn-copy" data-msg="${cardId}">📋 Copy Message</button>
+            <div class="no-phone-info">📱 No phone number available — copy the message and send manually</div>
+        `;
+    }
+
+    globalData = globalData.map(record => {
+        if (record['Client Name'] === clientName) {
+            return { ...record, 'Phone Number': newPhone.trim() };
+        }
+        return record;
+    });
+
+    filteredData = filteredData.map(record => {
+        if (record['Client Name'] === clientName) {
+            return { ...record, 'Phone Number': newPhone.trim() };
+        }
+        return record;
+    });
+    globalGroups = groupByClient(globalData);
+    filteredGroups = groupByClient(filteredData);
+
+    saveDashboardState();
+
+    card.querySelectorAll('.btn-copy').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const msgId = 'msg-' + btn.getAttribute('data-msg');
+            const textarea = document.getElementById(msgId);
+            if (textarea) {
+                navigator.clipboard.writeText(textarea.value).then(() => {
+                    btn.textContent = '✅ Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = '📋 Copy Message';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            }
+        });
+    });
+};
 
 
 function normalizePhone(phone) {
@@ -352,16 +582,26 @@ async function parsePDF(buffer) {
     let headerIdx = -1;
     let headerCols = null;
 
+    let bestScore = 0;
     for (let i = 0; i < rows.length; i++) {
         const rowText = rows[i].map(it => it.text).join(' ').toLowerCase();
-        if (rowText.includes('policyno') || (rowText.includes('s.no') && rowText.includes('name'))) {
+        const score =
+            (/(policy|policyno|policy\s*no)/.test(rowText) ? 1 : 0) +
+            (/(name\s*of\s*assured|assured|client\s*name|name)/.test(rowText) ? 1 : 0) +
+            (/(premium|totprem|instprem|amount)/.test(rowText) ? 1 : 0) +
+            (/(due\s*date|fup|date)/.test(rowText) ? 1 : 0) +
+            (/(s\.\s*no|sr\.\s*no|serial)/.test(rowText) ? 1 : 0);
+
+        if (score > bestScore) {
+            bestScore = score;
             headerIdx = i;
             headerCols = rows[i].map(it => ({ text: it.text, x: it.x }));
-            break;
         }
     }
 
-    if (!headerCols) throw new Error('Could not find a table header in this PDF. Expected columns like PolicyNo, Name of Assured, etc.');
+    if (!headerCols || bestScore < 2) {
+        throw new Error('Could not detect a reliable table header in this PDF. You can still map columns manually after parsing.');
+    }
 
     // Extract data rows — assign items to nearest column
     const dataRows = [];
@@ -555,10 +795,7 @@ function renderMetrics(data, groups) {
 
 
 function renderTable(data) {
-    const columns = [...REQUIRED_COLS];
-    if (data.some(row => String(row['Phone Number'] || '').trim() && String(row['Phone Number']).toLowerCase() !== 'nan')) {
-        columns.push('Phone Number');
-    }
+    const columns = buildExportColumns(data);
 
     const thead = document.getElementById('table-head');
     const tbody = document.getElementById('table-body');
@@ -589,10 +826,8 @@ function renderActions(groups, hasPhone) {
         let phone = hasPhone ? getFirstPhone(records) : '';
 
         // Call hook for solution branches to inject phone
-        if (typeof getPhoneForClient === 'function') {
-            const injected = getPhoneForClient(name, records);
-            if (injected) phone = injected;
-        }
+        const injected = getPhoneForClient(name, records);
+        if (injected) phone = injected;
 
         const waPhone = normalizePhone(phone);
 
@@ -623,9 +858,7 @@ function renderActions(groups, hasPhone) {
 
         // Phone input hook for solution 3
         let phoneInputHTML = '';
-        if (typeof renderPhoneInput === 'function') {
-            phoneInputHTML = renderPhoneInput(name, records, phone);
-        }
+        phoneInputHTML = renderPhoneInput(name, records, phone, cardId);
 
         card.innerHTML = `
             <div class="client-header" onclick="toggleCard('${cardId}')">
@@ -656,9 +889,7 @@ function renderActions(groups, hasPhone) {
     });
 
     // Render extra UI from solution branches
-    if (typeof renderAfterActions === 'function') {
-        renderAfterActions(groups);
-    }
+    renderAfterActions(groups);
 
     // Copy button listeners
     document.querySelectorAll('.btn-copy').forEach(btn => {
@@ -701,8 +932,15 @@ async function handleFile(file) {
         const colMap = autoMapColumns(headers);
 
         // 3. Check required columns
-        const mapped = new Set(Object.values(colMap));
-        const missing = REQUIRED_COLS.filter(c => !mapped.has(c));
+        let mapped = new Set(Object.values(colMap));
+        let missing = REQUIRED_COLS.filter(c => !mapped.has(c));
+        if (missing.length && file.name.toLowerCase().endsWith('.pdf')) {
+            const manualMap = requestManualColumnMap(headers, missing);
+            Object.assign(colMap, manualMap);
+            mapped = new Set(Object.values(colMap));
+            missing = REQUIRED_COLS.filter(c => !mapped.has(c));
+        }
+
         if (missing.length) {
             showAlert('error', `Missing required columns: ${missing.join(', ')}`);
             showAlert('info', `Columns found: ${headers.join(', ')}`);
@@ -719,18 +957,11 @@ async function handleFile(file) {
         showAlert('success', `File parsed — <strong>${data.length}</strong> records found`);
 
         // 5. Hook for solution branches to merge phone numbers
-        if (typeof mergePhoneNumbers === 'function') {
-            data = mergePhoneNumbers(data);
-        }
+        data = mergePhoneNumbers(data);
 
-        const hasPhone = data.some(d => d['Phone Number'] && d['Phone Number'].toLowerCase() !== 'nan');
-
-        // 6. Group and render
-        const groups = groupByClient(data);
-        renderMetrics(data, groups);
-        renderTable(data);
-        renderActions(groups, hasPhone);
-        showResults();
+        // 6. Group, render, and persist
+        renderDashboard(data, document.getElementById('search-input')?.value || '');
+        saveDashboardState(file.name);
 
     } catch (err) {
         showAlert('error', err.message);
@@ -751,6 +982,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const browseButton = document.getElementById('browse-button');
     const branchSelect = document.getElementById('branch-select');
     const previewBranchButton = document.getElementById('preview-branch-button');
+    const searchInput = document.getElementById('search-input');
+    const exportCsvButton = document.getElementById('export-csv-btn');
+    let dragDepth = 0;
 
     // Click to browse
     dropzone.addEventListener('click', () => fileInput.click());
@@ -770,6 +1004,36 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Drag & Drop
+    const swallowDragEvent = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    document.addEventListener('dragenter', (e) => {
+        swallowDragEvent(e);
+        dragDepth += 1;
+        dropzone.classList.add('drag-over');
+    }, true);
+
+    document.addEventListener('dragover', (e) => {
+        swallowDragEvent(e);
+        dropzone.classList.add('drag-over');
+    }, true);
+
+    document.addEventListener('dragleave', (e) => {
+        swallowDragEvent(e);
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (!dragDepth) {
+            dropzone.classList.remove('drag-over');
+        }
+    }, true);
+
+    document.addEventListener('drop', (e) => {
+        swallowDragEvent(e);
+        dragDepth = 0;
+        dropzone.classList.remove('drag-over');
+    }, true);
+
     dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropzone.classList.add('drag-over');
@@ -784,6 +1048,28 @@ document.addEventListener('DOMContentLoaded', () => {
         dropzone.classList.remove('drag-over');
         if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
     });
+
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            if (!globalData.length) return;
+            applySearch(searchInput.value);
+        });
+    }
+
+    if (exportCsvButton) {
+        exportCsvButton.addEventListener('click', () => {
+            const dataToExport = filteredData.length ? filteredData : globalData;
+            if (!dataToExport.length) {
+                showAlert('warning', 'Nothing to export yet. Upload a file first.');
+                return;
+            }
+
+            const columns = buildExportColumns(dataToExport);
+            const csv = toCsv(dataToExport, columns);
+            downloadTextFile(csv, `lic_due_list_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
+            showAlert('success', `Exported ${dataToExport.length} records to CSV.`);
+        });
+    }
 
     if (branchSelect) {
         branchSelect.addEventListener('change', () => {
@@ -800,4 +1086,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     loadRepoBranches();
+    hydrateDashboardFromCache();
 });

@@ -124,6 +124,10 @@
                         <h2>This Month's Due List</h2>
                         <p class="card-sub">A clean branch view of the parsed records</p>
                     </div>
+                    <div class="table-toolbar">
+                        <input type="text" id="search-input" class="search-input" placeholder="Search by client name, policy number, or amount..." aria-label="Search due list">
+                        <button type="button" id="export-csv-btn" class="btn btn-secondary">Export Filtered List</button>
+                    </div>
                     <div class="table-wrap">
                         <table id="data-table">
                             <thead id="table-head"></thead>
