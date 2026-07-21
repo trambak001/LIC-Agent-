@@ -294,14 +294,12 @@ function normalizePhone(phone) {
 async function loadRepoBranches() {
     const status = document.getElementById('branches-status');
     const select = document.getElementById('branch-select');
-    const list = document.getElementById('branches-list');
     const previewButton = document.getElementById('preview-branch-button');
 
-    if (!status || !select || !list || !previewButton) return;
+    if (!status || !select || !previewButton) return;
 
     status.textContent = 'Loading branches from GitHub…';
     select.innerHTML = '';
-    list.innerHTML = '';
     loadedBranches.length = 0;
 
     try {
@@ -323,46 +321,21 @@ async function loadRepoBranches() {
             option.value = branchInfo.name;
             option.textContent = branchInfo.name;
             select.appendChild(option);
-
-            const item = document.createElement('article');
-            item.className = 'branch-item';
-            item.innerHTML = `
-                <div class="branch-item-copy">
-                    <div class="branch-item-name">${escapeHtml(branchInfo.name)}</div>
-                    <div class="branch-item-desc">Standard branch from GitHub</div>
-                </div>
-                <div class="branch-item-actions">
-                    <a href="${branchInfo.url}" target="_blank" rel="noreferrer" class="branch-link">Open branch</a>
-                    <button type="button" class="branch-link branch-link-button" data-branch="${escapeHtml(branchInfo.name)}">Preview here</button>
-                    <a href="${branchInfo.url}/commits" target="_blank" rel="noreferrer" class="branch-link">History</a>
-                </div>
-            `;
-            list.appendChild(item);
         });
 
-        status.textContent = `Found ${loadedBranches.length} live branches in ${GITHUB_REPO}.`;
+        status.textContent = `Found ${loadedBranches.length} branches — select one to preview.`;
         select.value = loadedBranches[0]?.name || '';
         if (loadedBranches[0]) {
             openBranchPreview(loadedBranches[0].name);
         }
-
-        list.querySelectorAll('.branch-link-button').forEach(button => {
-            button.addEventListener('click', () => {
-                const branchName = button.getAttribute('data-branch');
-                if (branchName) {
-                    select.value = branchName;
-                    openBranchPreview(branchName);
-                }
-            });
-        });
     } catch (error) {
         status.textContent = 'Could not load GitHub branches right now.';
-        list.innerHTML = '<div class="branches-empty">Branch list unavailable. Open a branch on GitHub using the links below.</div>';
         console.error(error);
     }
 
     previewButton.disabled = !loadedBranches.length;
 }
+
 
 
 async function openBranchPreview(branchName) {
