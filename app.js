@@ -1,285 +1,31 @@
 /* ══════════════════════════════════════════════════════════════════
-   LIC Premium Reminder Dashboard — Core Application Logic
+   LIC Premium Dashboard v2 — Full-Stack Client Application
    ══════════════════════════════════════════════════════════════════ */
 
-// ── Configuration ────────────────────────────────────────────────
-const COLUMN_ALIASES = {
-    'Client Name':    ['name of assured', 'client name', 'name', 'assured name'],
-    'Policy Number':  ['policyno', 'policy number', 'policy no', 'policy_number'],
-    'Premium Amount': ['totprem', 'total premium', 'premium amount', 'instprem'],
-    'Due Date':       ['fup', 'due date', 'due_date', 'premium due date'],
-    'Phone Number':   ['phone number', 'phone', 'mobile', 'contact', 'mobile number'],
-};
-
-const REQUIRED_COLS = ['Client Name', 'Policy Number', 'Premium Amount', 'Due Date'];
-const GITHUB_REPO = 'trambak001/LIC-Agent-';
-const GITHUB_BRANCH_URL = `https://api.github.com/repos/${GITHUB_REPO}/branches?per_page=100`;
-const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/`;
-const STORAGE_KEY = 'licDashboardStateV1';
-
-const loadedBranches = [];
-let globalData = [];
-let filteredData = [];
-let globalGroups = new Map();
-let filteredGroups = new Map();
+const API = '';  // Same origin — Express serves both API and static files
 
 
 // ── Utilities ────────────────────────────────────────────────────
 
 function escapeHtml(value) {
-    return String(value)
+    return String(value ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/\"/g, '&quot;')
+        .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
 
-
-function slugify(value) {
-    const base = String(value || '')
-        .normalize('NFKD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-    return base || 'client';
+function formatNum(n) {
+    return Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 }
 
-
-function escapeJsString(value) {
-    return String(value)
-        .replace(/\\/g, '\\\\')
-        .replace(/'/g, "\\'")
-        .replace(/\r/g, '\\r')
-        .replace(/\n/g, '\\n');
+function formatDate(dateStr) {
+    if (!dateStr || dateStr === '—') return '—';
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
-
-
-function getFirstPhone(records) {
-    for (const record of records) {
-        const phone = String(record['Phone Number'] || '').trim();
-        if (phone && phone.toLowerCase() !== 'nan') return phone;
-    }
-    return '';
-}
-
-
-function getPhoneForClient(name, records) {
-    return getFirstPhone(records);
-}
-
-
-function mergePhoneNumbers(data) {
-    return data;
-}
-
-
-function renderPhoneInput(name, records, currentPhone, cardId) {
-    return `
-        <div class="phone-row">
-            <label class="msg-label" style="margin:0; flex-shrink:0;">Client Phone:</label>
-            <input
-                type="tel"
-                class="phone-input"
-                placeholder="e.g. 9876543210"
-                value="${escapeHtml(currentPhone || '')}"
-                onchange="updateClientPhone('${escapeJsString(cardId)}', '${escapeJsString(name)}', this.value)">
-        </div>
-    `;
-}
-
-
-function renderAfterActions(groups) {
-    return groups;
-}
-
-
-function saveDashboardState(fileName = '') {
-    try {
-        const payload = {
-            version: 1,
-            fileName,
-            savedAt: new Date().toISOString(),
-            data: globalData,
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-        console.error('Unable to save dashboard state', error);
-    }
-}
-
-
-function loadDashboardState() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (!parsed || !Array.isArray(parsed.data)) return null;
-        return parsed;
-    } catch (error) {
-        console.error('Unable to read cached dashboard state', error);
-        return null;
-    }
-}
-
-
-function buildExportColumns(data) {
-    const cols = [...REQUIRED_COLS];
-    if (data.some(row => String(row['Phone Number'] || '').trim() && String(row['Phone Number']).toLowerCase() !== 'nan')) {
-        cols.push('Phone Number');
-    }
-    return cols;
-}
-
-
-function toCsv(data, columns) {
-    const escapeCsv = (value) => {
-        const raw = value == null ? '' : String(value);
-        return /[",\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
-    };
-
-    const lines = [columns.map(escapeCsv).join(',')];
-    for (const row of data) {
-        lines.push(columns.map(col => escapeCsv(row[col])).join(','));
-    }
-    return lines.join('\n');
-}
-
-
-function downloadTextFile(content, fileName, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-}
-
-
-function renderDashboard(data, query = '') {
-    globalData = data;
-    globalGroups = groupByClient(globalData);
-    applySearch(query);
-}
-
-
-function applySearch(query = '') {
-    const normalized = String(query || '').toLowerCase().trim();
-    filteredData = !normalized
-        ? [...globalData]
-        : globalData.filter(item =>
-            String(item['Client Name'] || '').toLowerCase().includes(normalized) ||
-            String(item['Policy Number'] || '').toLowerCase().includes(normalized) ||
-            String(item['Premium Amount'] || '').toLowerCase().includes(normalized) ||
-            String(item['Due Date'] || '').toLowerCase().includes(normalized)
-        );
-
-    filteredGroups = groupByClient(filteredData);
-    const hasPhone = filteredData.some(d => d['Phone Number'] && String(d['Phone Number']).toLowerCase() !== 'nan');
-
-    renderMetrics(filteredData, filteredGroups);
-    renderTable(filteredData);
-    renderActions(filteredGroups, hasPhone);
-    showResults();
-}
-
-
-function requestManualColumnMap(headers, missingCols) {
-    const options = headers.map((h, i) => `${i + 1}. ${h}`).join('\n');
-    const manualMap = {};
-
-    for (const missing of missingCols) {
-        const answer = window.prompt(
-            `Could not auto-detect "${missing}" from this file.\n\nChoose the matching column number:\n${options}\n\nLeave blank to skip.`,
-            ''
-        );
-        if (!answer || !answer.trim()) continue;
-
-        const idx = Number.parseInt(answer.trim(), 10) - 1;
-        if (Number.isInteger(idx) && idx >= 0 && idx < headers.length) {
-            manualMap[headers[idx]] = missing;
-        }
-    }
-
-    return manualMap;
-}
-
-
-function hydrateDashboardFromCache() {
-    const cached = loadDashboardState();
-    if (!cached) return;
-
-    const data = mergePhoneNumbers(cached.data);
-    if (!Array.isArray(data) || !data.length) return;
-
-    renderDashboard(data);
-    showAlert('info', `Restored ${data.length} cached records${cached.fileName ? ` from ${escapeHtml(cached.fileName)}` : ''}.`);
-}
-
-
-window.updateClientPhone = function(cardId, clientName, newPhone) {
-    const card = document.getElementById(cardId);
-    if (!card) return;
-
-    const cleanPhone = normalizePhone(newPhone);
-    const msgText = card.querySelector('textarea.msg-preview')?.value || '';
-    const btnRow = card.querySelector('.btn-row');
-    if (!btnRow) return;
-
-    const firstName = String(clientName || 'Client').trim().split(/\s+/)[0] || 'Client';
-    if (cleanPhone) {
-        const waLink = whatsappLink(cleanPhone, msgText);
-        btnRow.innerHTML = `
-            <a href="${waLink}" target="_blank" class="btn btn-primary">💬 WhatsApp ${escapeHtml(firstName)}</a>
-            <button class="btn btn-secondary btn-copy" data-msg="${cardId}">📋 Copy Message</button>
-        `;
-    } else {
-        btnRow.innerHTML = `
-            <button class="btn btn-secondary btn-copy" data-msg="${cardId}">📋 Copy Message</button>
-            <div class="no-phone-info">📱 No phone number available — copy the message and send manually</div>
-        `;
-    }
-
-    globalData = globalData.map(record => {
-        if (record['Client Name'] === clientName) {
-            return { ...record, 'Phone Number': newPhone.trim() };
-        }
-        return record;
-    });
-
-    filteredData = filteredData.map(record => {
-        if (record['Client Name'] === clientName) {
-            return { ...record, 'Phone Number': newPhone.trim() };
-        }
-        return record;
-    });
-    globalGroups = groupByClient(globalData);
-    filteredGroups = groupByClient(filteredData);
-
-    saveDashboardState();
-
-    card.querySelectorAll('.btn-copy').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const msgId = 'msg-' + btn.getAttribute('data-msg');
-            const textarea = document.getElementById(msgId);
-            if (textarea) {
-                navigator.clipboard.writeText(textarea.value).then(() => {
-                    btn.textContent = '✅ Copied!';
-                    btn.classList.add('copied');
-                    setTimeout(() => {
-                        btn.textContent = '📋 Copy Message';
-                        btn.classList.remove('copied');
-                    }, 2000);
-                });
-            }
-        });
-    });
-};
-
 
 function normalizePhone(phone) {
     const digits = String(phone || '').replace(/\D/g, '');
@@ -290,413 +36,6 @@ function normalizePhone(phone) {
     return digits;
 }
 
-
-async function loadRepoBranches() {
-    const status = document.getElementById('branches-status');
-    const select = document.getElementById('branch-select');
-    const previewButton = document.getElementById('preview-branch-button');
-
-    if (!status || !select || !previewButton) return;
-
-    status.textContent = 'Loading branches from GitHub…';
-    select.innerHTML = '';
-    loadedBranches.length = 0;
-
-    try {
-        const response = await fetch(GITHUB_BRANCH_URL, { headers: { Accept: 'application/vnd.github+json' } });
-        if (!response.ok) {
-            throw new Error(`GitHub responded with ${response.status}`);
-        }
-
-        const branches = await response.json();
-        branches.forEach(branch => {
-            const branchInfo = {
-                name: branch.name,
-                url: `https://github.com/${GITHUB_REPO}/tree/${encodeURIComponent(branch.name)}`,
-                rawIndexUrl: `${GITHUB_RAW_URL}${encodeURIComponent(branch.name)}/index.html`,
-            };
-            loadedBranches.push(branchInfo);
-
-            const option = document.createElement('option');
-            option.value = branchInfo.name;
-            option.textContent = branchInfo.name;
-            select.appendChild(option);
-        });
-
-        status.textContent = `Found ${loadedBranches.length} branches — select one to preview.`;
-        select.value = loadedBranches[0]?.name || '';
-        if (loadedBranches[0]) {
-            openBranchPreview(loadedBranches[0].name);
-        }
-    } catch (error) {
-        status.textContent = 'Could not load GitHub branches right now.';
-        console.error(error);
-    }
-
-    previewButton.disabled = !loadedBranches.length;
-}
-
-
-
-async function openBranchPreview(branchName) {
-    const branch = loadedBranches.find(item => item.name === branchName);
-    const iframe = document.getElementById('branch-preview-frame');
-    const label = document.getElementById('branch-preview-label');
-    const openLink = document.getElementById('branch-preview-open');
-
-    if (!branch || !iframe || !label || !openLink) return;
-
-    label.textContent = branch.name;
-    openLink.href = branch.url;
-
-    try {
-        const response = await fetch(branch.rawIndexUrl);
-        if (!response.ok) {
-            throw new Error(`Unable to fetch ${branch.name} index.html (${response.status})`);
-        }
-
-        const html = await response.text();
-        const parsed = new DOMParser().parseFromString(html, 'text/html');
-        const branchRoot = `${GITHUB_RAW_URL}${encodeURIComponent(branch.name)}/`;
-
-        const localStyles = [...parsed.querySelectorAll('link[rel="stylesheet"]')]
-            .filter(link => {
-                const href = link.getAttribute('href') || '';
-                return href && !/^https?:\/\//i.test(href) && !href.startsWith('//');
-            });
-
-        for (const link of localStyles) {
-            const href = link.getAttribute('href') || '';
-            const cssUrl = new URL(href, branchRoot).href;
-            const cssResponse = await fetch(cssUrl);
-            if (!cssResponse.ok) {
-                throw new Error(`Unable to fetch ${href} (${cssResponse.status})`);
-            }
-            const cssText = await cssResponse.text();
-            const styleTag = parsed.createElement('style');
-            styleTag.textContent = cssText;
-            link.replaceWith(styleTag);
-        }
-
-        const localScripts = [...parsed.querySelectorAll('script[src]')]
-            .filter(script => {
-                const src = script.getAttribute('src') || '';
-                return src && !/^https?:\/\//i.test(src) && !src.startsWith('//');
-            });
-
-        for (const script of localScripts) {
-            const src = script.getAttribute('src') || '';
-            const scriptUrl = new URL(src, branchRoot).href;
-            const scriptResponse = await fetch(scriptUrl);
-            if (!scriptResponse.ok) {
-                throw new Error(`Unable to fetch ${src} (${scriptResponse.status})`);
-            }
-            const scriptText = await scriptResponse.text();
-            const inlineScript = parsed.createElement('script');
-            inlineScript.textContent = scriptText;
-            script.replaceWith(inlineScript);
-        }
-
-        iframe.srcdoc = '<!doctype html>' + parsed.documentElement.outerHTML;
-    } catch (error) {
-        iframe.srcdoc = `
-            <!doctype html>
-            <html lang="en">
-            <head>
-                <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 0; padding: 24px; background: #fff7f8; color: #8b1e2d; }
-                    .error-box { border: 1px solid rgba(139, 30, 45, .18); background: #fff; border-radius: 16px; padding: 20px; }
-                    .error-title { font-weight: 700; margin-bottom: 8px; }
-                </style>
-            </head>
-            <body>
-                <div class="error-box">
-                    <div class="error-title">Preview unavailable for ${escapeHtml(branch.name)}</div>
-                    <div>${escapeHtml(error.message)}</div>
-                </div>
-            </body>
-            </html>
-        `;
-    }
-}
-
-
-// ── File Parsing ─────────────────────────────────────────────────
-
-async function parseFile(file) {
-    const name = file.name.toLowerCase();
-    if (name.endsWith('.csv')) {
-        const text = await file.text();
-        return parseCSV(text);
-    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
-        const buffer = await file.arrayBuffer();
-        return parseExcel(buffer);
-    } else if (name.endsWith('.pdf')) {
-        const buffer = await file.arrayBuffer();
-        return await parsePDF(buffer);
-    }
-    throw new Error('Unsupported file type. Use Excel, CSV, or PDF.');
-}
-
-
-function parseCSV(text) {
-    const lines = text.trim().split(/\r?\n/);
-    if (lines.length < 2) throw new Error('CSV file is empty or has no data rows.');
-
-    const parseLine = (line) => {
-        const cells = [];
-        let current = '';
-        let inQuotes = false;
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            if (char === '"') {
-                if (inQuotes && line[i + 1] === '"') {
-                    current += '"';
-                    i++;
-                } else {
-                    inQuotes = !inQuotes;
-                }
-            } else if (char === ',' && !inQuotes) {
-                cells.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-
-        cells.push(current.trim());
-        return cells.map(cell => cell.replace(/^"|"$/g, ''));
-    };
-
-    const headers = parseLine(lines[0]);
-    const rows = [];
-
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        rows.push(parseLine(line));
-    }
-
-    return { headers, rows };
-}
-
-
-function parseExcel(buffer) {
-    const workbook = XLSX.read(buffer, { type: 'array' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-
-    if (jsonData.length < 2) throw new Error('Excel sheet is empty or has no data rows.');
-
-    const headers = jsonData[0].map(h => String(h).trim());
-    const rows = jsonData.slice(1).filter(row => row.some(cell => String(cell).trim()));
-
-    return {
-        headers,
-        rows: rows.map(row => row.map(cell => String(cell).trim())),
-    };
-}
-
-
-async function parsePDF(buffer) {
-    if (typeof pdfjsLib === 'undefined') {
-        throw new Error('PDF.js library not loaded. Check your internet connection.');
-    }
-
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const allItems = [];
-
-    // Extract text items with positions from all pages
-    for (let p = 1; p <= pdf.numPages; p++) {
-        const page = await pdf.getPage(p);
-        const content = await page.getTextContent();
-        for (const item of content.items) {
-            const text = item.str.trim();
-            if (text) {
-                allItems.push({
-                    text,
-                    x: Math.round(item.transform[4]),
-                    y: Math.round(item.transform[5]),
-                    page: p,
-                });
-            }
-        }
-    }
-
-    if (!allItems.length) throw new Error('No text found in this PDF.');
-
-    // Group items into rows by y-coordinate (within 4px tolerance)
-    const rowMap = new Map();
-    for (const item of allItems) {
-        let assigned = false;
-        for (const [key, arr] of rowMap) {
-            if (Math.abs(item.y - key) <= 4) {
-                arr.push(item);
-                assigned = true;
-                break;
-            }
-        }
-        if (!assigned) rowMap.set(item.y, [item]);
-    }
-
-    // Sort rows top→bottom (PDF y is bottom-up, so descending)
-    const rows = [...rowMap.entries()]
-        .sort((a, b) => b[0] - a[0])
-        .map(([, items]) => {
-            items.sort((a, b) => a.x - b.x);
-            return items;
-        });
-
-    // Find header row
-    let headerIdx = -1;
-    let headerCols = null;
-
-    let bestScore = 0;
-    for (let i = 0; i < rows.length; i++) {
-        const rowText = rows[i].map(it => it.text).join(' ').toLowerCase();
-        const score =
-            (/(policy|policyno|policy\s*no)/.test(rowText) ? 1 : 0) +
-            (/(name\s*of\s*assured|assured|client\s*name|name)/.test(rowText) ? 1 : 0) +
-            (/(premium|totprem|instprem|amount)/.test(rowText) ? 1 : 0) +
-            (/(due\s*date|fup|date)/.test(rowText) ? 1 : 0) +
-            (/(s\.\s*no|sr\.\s*no|serial)/.test(rowText) ? 1 : 0);
-
-        if (score > bestScore) {
-            bestScore = score;
-            headerIdx = i;
-            headerCols = rows[i].map(it => ({ text: it.text, x: it.x }));
-        }
-    }
-
-    if (!headerCols || bestScore < 2) {
-        throw new Error('Could not detect a reliable table header in this PDF. You can still map columns manually after parsing.');
-    }
-
-    // Extract data rows — assign items to nearest column
-    const dataRows = [];
-    for (let i = headerIdx + 1; i < rows.length; i++) {
-        const row = rows[i];
-        const rowText = row.map(it => it.text).join(' ').toLowerCase();
-
-        // Skip repeated headers on later pages
-        if (rowText.includes('policyno') || (rowText.includes('s.no') && rowText.includes('name'))) continue;
-        // Skip summary / total rows
-        if (rowText.includes('total') || rowText.includes('grand')) continue;
-
-        const record = new Array(headerCols.length).fill('');
-        for (const item of row) {
-            let closest = 0, minDist = Infinity;
-            for (let c = 0; c < headerCols.length; c++) {
-                const dist = Math.abs(item.x - headerCols[c].x);
-                if (dist < minDist) { minDist = dist; closest = c; }
-            }
-            record[closest] = record[closest] ? record[closest] + ' ' + item.text : item.text;
-        }
-
-        // Keep rows that have at least some data
-        if (record.filter(c => c.trim()).length >= 3) {
-            dataRows.push(record);
-        }
-    }
-
-    if (!dataRows.length) throw new Error('Found headers but no data rows in the PDF.');
-
-    return {
-        headers: headerCols.map(h => h.text),
-        rows: dataRows,
-    };
-}
-
-
-// ── Column Mapping ───────────────────────────────────────────────
-
-function autoMapColumns(headers) {
-    const lowerHeaders = headers.map(h => h.toLowerCase().trim());
-    const mapping = {};       // original header → standard name
-    const usedIndices = new Set();
-
-    for (const [stdName, aliases] of Object.entries(COLUMN_ALIASES)) {
-        for (const alias of aliases) {
-            const idx = lowerHeaders.indexOf(alias);
-            if (idx !== -1 && !usedIndices.has(idx)) {
-                mapping[headers[idx]] = stdName;
-                usedIndices.add(idx);
-                break;
-            }
-        }
-    }
-    return mapping;
-}
-
-
-// ── Data Processing ──────────────────────────────────────────────
-
-function processData(headers, rows, colMap) {
-    return rows.map(row => {
-        const obj = {};
-        headers.forEach((h, i) => {
-            const stdName = colMap[h];
-            if (stdName) obj[stdName] = (row[i] || '').trim();
-        });
-        // Clean premium amount
-        if (obj['Premium Amount']) {
-            obj['Premium Amount'] = parseFloat(
-                String(obj['Premium Amount']).replace(/,/g, '').replace(/[^\d.]/g, '')
-            ) || 0;
-        }
-        return obj;
-    }).filter(obj => obj['Client Name'] && obj['Policy Number']);
-}
-
-
-function groupByClient(data) {
-    const groups = new Map();
-    for (const record of data) {
-        const name = record['Client Name'];
-        if (!groups.has(name)) groups.set(name, []);
-        groups.get(name).push(record);
-    }
-    // Sort by name
-    return new Map([...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])));
-}
-
-
-// ── Message Generation ───────────────────────────────────────────
-
-function buildMessage(name, records) {
-    if (records.length === 1) {
-        const p = records[0];
-        return (
-            `Hi ${name},\n\n` +
-            `This is a friendly reminder regarding your LIC policy ` +
-            `*No. ${p['Policy Number']}*.\n` +
-            `The premium of *₹${formatNum(p['Premium Amount'])}* is due on ` +
-            `*${p['Due Date']}*.\n\n` +
-            `Please clear the payment at the earliest to keep your ` +
-            `policy active. Let me know if you need any assistance!`
-        );
-    }
-
-    const total = records.reduce((s, r) => s + (r['Premium Amount'] || 0), 0);
-    const lines = records.map((p, i) =>
-        `  ${i + 1}. Policy *No. ${p['Policy Number']}* — ₹${formatNum(p['Premium Amount'])} (Due: ${p['Due Date']})`
-    ).join('\n');
-
-    return (
-        `Hi ${name},\n\n` +
-        `This is a friendly reminder for your *${records.length} LIC policies*:\n\n` +
-        `${lines}\n\n` +
-        `📌 *Total Premium: ₹${formatNum(total)}*\n\n` +
-        `Please clear the payments at the earliest to keep your ` +
-        `policies active. Let me know if you need any assistance!`
-    );
-}
-
-
 function whatsappLink(phone, message) {
     const cleaned = normalizePhone(phone);
     if (!cleaned) return '';
@@ -704,12 +43,7 @@ function whatsappLink(phone, message) {
 }
 
 
-function formatNum(n) {
-    return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-}
-
-
-// ── UI Rendering ─────────────────────────────────────────────────
+// ── Alert System ─────────────────────────────────────────────────
 
 function showAlert(type, msg) {
     const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
@@ -719,293 +53,242 @@ function showAlert(type, msg) {
     el.innerHTML = `<span>${icons[type] || ''}</span><span>${msg}</span>`;
     container.appendChild(el);
 
-    // Auto-dismiss after 6s
     setTimeout(() => {
         el.style.opacity = '0';
         el.style.transform = 'translateY(-8px)';
         el.style.transition = '.3s ease';
         setTimeout(() => el.remove(), 300);
-    }, 6000);
+    }, 5000);
 }
 
 
-function clearAlerts() {
-    document.getElementById('alerts').innerHTML = '';
-}
+// ── Tab Navigation ───────────────────────────────────────────────
 
+function initTabs() {
+    const tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-function showLoading() { document.getElementById('loading').classList.remove('hidden'); }
-function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+            tab.classList.add('active');
+            const target = document.getElementById(`content-${tab.dataset.tab}`);
+            if (target) target.classList.add('active');
 
-
-function showResults() { document.getElementById('results').classList.remove('hidden'); }
-function hideResults() { document.getElementById('results').classList.add('hidden'); }
-
-
-function renderMetrics(data, groups) {
-    const totalPremium = data.reduce((s, d) => s + (d['Premium Amount'] || 0), 0);
-    const totalPolicies = data.length;
-    const totalClients = groups.size;
-
-    document.getElementById('metrics').innerHTML = `
-        <div class="metric">
-            <div class="metric-icon">👤</div>
-            <div class="metric-value">${totalClients}</div>
-            <div class="metric-label">Total Clients</div>
-        </div>
-        <div class="metric">
-            <div class="metric-icon">📋</div>
-            <div class="metric-value">${totalPolicies}</div>
-            <div class="metric-label">Total Policies</div>
-        </div>
-        <div class="metric">
-            <div class="metric-icon">💰</div>
-            <div class="metric-value">₹${formatNum(totalPremium)}</div>
-            <div class="metric-label">Total Premium Due</div>
-        </div>
-    `;
-}
-
-
-function renderTable(data) {
-    const columns = buildExportColumns(data);
-
-    const thead = document.getElementById('table-head');
-    const tbody = document.getElementById('table-body');
-
-    thead.innerHTML = `<tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
-
-    tbody.innerHTML = data.map(row =>
-        `<tr>${columns.map(c => {
-            let val = row[c] ?? '';
-            if (c === 'Premium Amount') val = '₹' + formatNum(val);
-            return `<td>${escapeHtml(val)}</td>`;
-        }).join('')}</tr>`
-    ).join('');
-}
-
-
-function renderActions(groups, hasPhone) {
-    const list = document.getElementById('action-list');
-    list.innerHTML = '';
-
-    Array.from(groups.entries()).forEach(([name, records], index) => {
-        const total = records.reduce((s, r) => s + (r['Premium Amount'] || 0), 0);
-        const n = records.length;
-        const tag = n === 1 ? 'policy' : 'policies';
-        const msg = buildMessage(name, records);
-        const safeName = escapeHtml(name);
-
-        let phone = hasPhone ? getFirstPhone(records) : '';
-
-        // Call hook for solution branches to inject phone
-        const injected = getPhoneForClient(name, records);
-        if (injected) phone = injected;
-
-        const waPhone = normalizePhone(phone);
-
-        const cardId = `card-${slugify(name)}-${index}`;
-        const card = document.createElement('div');
-        card.className = 'client-card';
-        card.id = cardId;
-
-        // Mini table for policies
-        const miniRows = records.map(r =>
-            `<tr><td>${escapeHtml(r['Policy Number'])}</td><td>₹${escapeHtml(formatNum(r['Premium Amount']))}</td><td>${escapeHtml(r['Due Date'])}</td></tr>`
-        ).join('');
-
-        // Phone-dependent buttons
-        let actionButtons = '';
-        if (waPhone) {
-            const waLink = whatsappLink(waPhone, msg);
-            actionButtons = `
-                <a href="${waLink}" target="_blank" class="btn btn-primary">💬 WhatsApp ${escapeHtml(name.split(' ')[0] || 'Client')}</a>
-                <button class="btn btn-secondary btn-copy" data-msg="${cardId}">📋 Copy Message</button>
-            `;
-        } else {
-            actionButtons = `
-                <button class="btn btn-secondary btn-copy" data-msg="${cardId}">📋 Copy Message</button>
-                <div class="no-phone-info">📱 No phone number available — copy the message and send manually</div>
-            `;
-        }
-
-        // Phone input hook for solution 3
-        let phoneInputHTML = '';
-        phoneInputHTML = renderPhoneInput(name, records, phone, cardId);
-
-        card.innerHTML = `
-            <div class="client-header" onclick="toggleCard('${cardId}')">
-                <div class="client-info">
-                    <span class="client-name">${safeName}</span>
-                    <div class="client-tags">
-                        <span class="tag tag-policies">${n} ${tag}</span>
-                        <span class="tag tag-amount">₹${formatNum(total)}</span>
-                    </div>
-                </div>
-                <span class="client-chevron">▼</span>
-            </div>
-            <div class="client-body">
-                <div class="client-body-inner">
-                    <table class="mini-table">
-                        <thead><tr><th>Policy Number</th><th>Premium</th><th>Due Date</th></tr></thead>
-                        <tbody>${miniRows}</tbody>
-                    </table>
-                    ${phoneInputHTML}
-                    <div class="msg-label">Message Preview</div>
-                    <textarea class="msg-preview" id="msg-${cardId}">${escapeHtml(msg)}</textarea>
-                    <div class="btn-row">${actionButtons}</div>
-                </div>
-            </div>
-        `;
-
-        list.appendChild(card);
-    });
-
-    // Render extra UI from solution branches
-    renderAfterActions(groups);
-
-    // Copy button listeners
-    document.querySelectorAll('.btn-copy').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const msgId = 'msg-' + btn.getAttribute('data-msg');
-            const textarea = document.getElementById(msgId);
-            if (textarea) {
-                navigator.clipboard.writeText(textarea.value).then(() => {
-                    btn.textContent = '✅ Copied!';
-                    btn.classList.add('copied');
-                    setTimeout(() => {
-                        btn.textContent = '📋 Copy Message';
-                        btn.classList.remove('copied');
-                    }, 2000);
-                });
-            }
+            // Refresh data when switching tabs
+            const tabName = tab.dataset.tab;
+            if (tabName === 'dashboard') loadDashboard();
+            if (tabName === 'policies')  loadPolicies();
+            if (tabName === 'insights')  loadInsights();
+            if (tabName === 'upload')    loadUploadHistory();
         });
     });
 }
 
 
-function toggleCard(cardId) {
-    const card = document.getElementById(cardId);
-    if (card) card.classList.toggle('open');
+// ── API Helpers ──────────────────────────────────────────────────
+
+async function apiGet(path) {
+    const res = await fetch(`${API}${path}`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+}
+
+async function apiPut(path, body) {
+    const res = await fetch(`${API}${path}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+}
+
+async function apiDelete(path) {
+    const res = await fetch(`${API}${path}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+}
+
+async function apiUpload(path, file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API}${path}`, { method: 'POST', body: form });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(err.error || 'Upload failed');
+    }
+    return res.json();
 }
 
 
-// ── Main Handler ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+//  DASHBOARD TAB
+// ══════════════════════════════════════════════════════════════════
 
-async function handleFile(file) {
-    clearAlerts();
-    hideResults();
-    showLoading();
-
+async function loadDashboard() {
     try {
-        // 1. Parse file
-        const { headers, rows } = await parseFile(file);
-
-        // 2. Map columns
-        const colMap = autoMapColumns(headers);
-
-        // 3. Check required columns
-        let mapped = new Set(Object.values(colMap));
-        let missing = REQUIRED_COLS.filter(c => !mapped.has(c));
-        if (missing.length && file.name.toLowerCase().endsWith('.pdf')) {
-            const manualMap = requestManualColumnMap(headers, missing);
-            Object.assign(colMap, manualMap);
-            mapped = new Set(Object.values(colMap));
-            missing = REQUIRED_COLS.filter(c => !mapped.has(c));
-        }
-
-        if (missing.length) {
-            showAlert('error', `Missing required columns: ${missing.join(', ')}`);
-            showAlert('info', `Columns found: ${headers.join(', ')}`);
-            return;
-        }
-
-        // 4. Process data
-        let data = processData(headers, rows, colMap);
-        if (!data.length) {
-            showAlert('error', 'No valid data rows found after parsing.');
-            return;
-        }
-
-        showAlert('success', `File parsed — <strong>${data.length}</strong> records found`);
-
-        // 5. Hook for solution branches to merge phone numbers
-        data = mergePhoneNumbers(data);
-
-        // 6. Group, render, and persist
-        renderDashboard(data, document.getElementById('search-input')?.value || '');
-        saveDashboardState(file.name);
-
+        const stats = await apiGet('/api/stats');
+        renderDashboardMetrics(stats);
+        renderDashboardAlerts(stats);
+        renderRecentUploads(stats.recentUploads);
     } catch (err) {
-        showAlert('error', err.message);
-        console.error(err);
-    } finally {
-        hideLoading();
-        const fileInput = document.getElementById('file-input');
-        if (fileInput) fileInput.value = '';
+        console.error('Dashboard load error:', err);
     }
 }
 
+function renderDashboardMetrics(stats) {
+    // Hero stats
+    document.getElementById('stat-policies').textContent = stats.totalPolicies;
+    document.getElementById('stat-premium').textContent = `₹${formatNum(stats.totalPremium)}`;
+    document.getElementById('stat-collection').textContent = `${stats.collectionRate}%`;
 
-// ── Event Listeners ──────────────────────────────────────────────
+    // Metrics grid
+    const el = document.getElementById('dash-metrics');
+    el.innerHTML = `
+        <div class="metric">
+            <div class="metric-icon">👤</div>
+            <div class="metric-value">${stats.totalClients}</div>
+            <div class="metric-label">Total Clients</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon">📋</div>
+            <div class="metric-value">${stats.totalPolicies}</div>
+            <div class="metric-label">Total Policies</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon">💰</div>
+            <div class="metric-value">₹${formatNum(stats.totalPremium)}</div>
+            <div class="metric-label">Total Premium</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon">⚠️</div>
+            <div class="metric-value">${stats.overdue}</div>
+            <div class="metric-label">Overdue</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon">❌</div>
+            <div class="metric-value">${stats.lapsed}</div>
+            <div class="metric-label">Lapsed</div>
+        </div>
+        <div class="metric">
+            <div class="metric-icon">✅</div>
+            <div class="metric-value">${stats.paid}</div>
+            <div class="metric-label">Paid</div>
+        </div>
+    `;
+}
 
-document.addEventListener('DOMContentLoaded', () => {
-    const dropzone = document.getElementById('dropzone');
-    const fileInput = document.getElementById('file-input');
-    const browseButton = document.getElementById('browse-button');
-    const branchSelect = document.getElementById('branch-select');
-    const previewBranchButton = document.getElementById('preview-branch-button');
-    const searchInput = document.getElementById('search-input');
-    const exportCsvButton = document.getElementById('export-csv-btn');
-    let dragDepth = 0;
+function renderDashboardAlerts(stats) {
+    const el = document.getElementById('dash-alerts');
+    el.innerHTML = '';
 
-    // Click to browse
-    dropzone.addEventListener('click', () => fileInput.click());
-    browseButton.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        fileInput.click();
+    if (stats.overdue > 0) {
+        showDashAlert(el, 'warning', `⚠️ ${stats.overdue} policies are overdue — go to Insights for details`);
+    }
+    if (stats.lapsed > 0) {
+        showDashAlert(el, 'error', `❌ ${stats.lapsed} policies are at risk of lapsing`);
+    }
+    if (stats.totalPolicies === 0) {
+        showDashAlert(el, 'info', 'ℹ️ No policies yet — go to the Upload tab to import a due list');
+    }
+}
+
+function showDashAlert(container, type, msg) {
+    const div = document.createElement('div');
+    div.className = `alert alert-${type}`;
+    div.innerHTML = msg;
+    container.appendChild(div);
+}
+
+function renderRecentUploads(uploads) {
+    const card = document.getElementById('recent-uploads-card');
+    const body = document.getElementById('recent-uploads-body');
+
+    if (!uploads || !uploads.length) {
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = '';
+    body.innerHTML = uploads.map(u => `
+        <tr>
+            <td>${escapeHtml(u.file_name)}</td>
+            <td><span class="mode-tag">${u.upload_type === 'due_list' ? '📋 Due List' : '💰 Commission'}</span></td>
+            <td>${u.records_count}</td>
+            <td>${formatDate(u.uploaded_at)}</td>
+        </tr>
+    `).join('');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  UPLOAD TAB
+// ══════════════════════════════════════════════════════════════════
+
+function initUploads() {
+    // Due list upload
+    setupDropzone('dropzone-duelist', 'file-duelist', async (file) => {
+        const resultEl = document.getElementById('duelist-result');
+        resultEl.innerHTML = '<div class="result-box result-success">⏳ Processing due list...</div>';
+
+        try {
+            const result = await apiUpload('/api/upload/duelist', file);
+            resultEl.innerHTML = `
+                <div class="result-box result-success">
+                    ✅ ${result.message}<br>
+                    <small>Total records: ${result.total}</small>
+                </div>
+            `;
+            showAlert('success', `Due list uploaded — ${result.inserted} new, ${result.updated} updated`);
+            loadDashboard();
+        } catch (err) {
+            resultEl.innerHTML = `<div class="result-box result-error">❌ ${escapeHtml(err.message)}</div>`;
+            showAlert('error', err.message);
+        }
     });
 
-    fileInput.addEventListener('click', () => {
+    // Commission upload
+    setupDropzone('dropzone-commission', 'file-commission', async (file) => {
+        const resultEl = document.getElementById('commission-result');
+        resultEl.innerHTML = '<div class="result-box result-success">⏳ Processing commissions...</div>';
+
+        try {
+            const result = await apiUpload('/api/upload/commission', file);
+            let html = `
+                <div class="result-box result-success">
+                    ✅ ${result.message}<br>
+                    <small>Total records: ${result.total}</small>
+                </div>
+            `;
+            if (result.unmatchedPolicies && result.unmatchedPolicies.length) {
+                html += `
+                    <div class="result-box result-error" style="margin-top:.4rem">
+                        ⚠️ Unmatched policy numbers: ${result.unmatchedPolicies.map(p => escapeHtml(p)).join(', ')}
+                    </div>
+                `;
+            }
+            resultEl.innerHTML = html;
+            showAlert('success', `Commissions processed — ${result.matched} matched, FUP dates advanced`);
+            loadDashboard();
+        } catch (err) {
+            resultEl.innerHTML = `<div class="result-box result-error">❌ ${escapeHtml(err.message)}</div>`;
+            showAlert('error', err.message);
+        }
+    });
+}
+
+function setupDropzone(dropzoneId, fileInputId, handler) {
+    const dropzone = document.getElementById(dropzoneId);
+    const fileInput = document.getElementById(fileInputId);
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files[0]) handler(e.target.files[0]);
         fileInput.value = '';
     });
-
-    // File selected
-    fileInput.addEventListener('change', (e) => {
-        if (e.target.files[0]) handleFile(e.target.files[0]);
-    });
-
-    // Drag & Drop
-    const swallowDragEvent = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
-
-    document.addEventListener('dragenter', (e) => {
-        swallowDragEvent(e);
-        dragDepth += 1;
-        dropzone.classList.add('drag-over');
-    }, true);
-
-    document.addEventListener('dragover', (e) => {
-        swallowDragEvent(e);
-        dropzone.classList.add('drag-over');
-    }, true);
-
-    document.addEventListener('dragleave', (e) => {
-        swallowDragEvent(e);
-        dragDepth = Math.max(0, dragDepth - 1);
-        if (!dragDepth) {
-            dropzone.classList.remove('drag-over');
-        }
-    }, true);
-
-    document.addEventListener('drop', (e) => {
-        swallowDragEvent(e);
-        dragDepth = 0;
-        dropzone.classList.remove('drag-over');
-    }, true);
 
     dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -1019,45 +302,399 @@ document.addEventListener('DOMContentLoaded', () => {
     dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropzone.classList.remove('drag-over');
-        if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+        if (e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]);
+    });
+}
+
+async function loadUploadHistory() {
+    try {
+        const data = await apiGet('/api/upload/history');
+        const body = document.getElementById('upload-history-body');
+        if (!data.uploads || !data.uploads.length) {
+            body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted)">No uploads yet</td></tr>';
+            return;
+        }
+        body.innerHTML = data.uploads.map(u => `
+            <tr>
+                <td>${escapeHtml(u.file_name)}</td>
+                <td><span class="mode-tag">${u.upload_type === 'due_list' ? '📋 Due List' : '💰 Commission'}</span></td>
+                <td>${u.records_count}</td>
+                <td>${formatDate(u.uploaded_at)}</td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error('Upload history error:', err);
+    }
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  POLICY DATABASE TAB
+// ══════════════════════════════════════════════════════════════════
+
+let policyDebounce = null;
+
+function initPolicyFilters() {
+    const search = document.getElementById('policy-search');
+    const filterMode = document.getElementById('filter-mode');
+    const filterStatus = document.getElementById('filter-status');
+    const exportBtn = document.getElementById('export-csv-btn');
+
+    const reload = () => {
+        clearTimeout(policyDebounce);
+        policyDebounce = setTimeout(loadPolicies, 300);
+    };
+
+    if (search) search.addEventListener('input', reload);
+    if (filterMode) filterMode.addEventListener('change', reload);
+    if (filterStatus) filterStatus.addEventListener('change', reload);
+
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportPoliciesCsv);
+    }
+}
+
+async function loadPolicies() {
+    try {
+        const search = document.getElementById('policy-search')?.value || '';
+        const mode = document.getElementById('filter-mode')?.value || '';
+        const status = document.getElementById('filter-status')?.value || '';
+
+        const params = new URLSearchParams();
+        if (search) params.set('search', search);
+        if (mode) params.set('mode', mode);
+        if (status) params.set('status', status);
+        params.set('sort', 'updated_at');
+        params.set('order', 'desc');
+
+        const data = await apiGet(`/api/policies?${params}`);
+        renderPolicyTable(data.policies);
+    } catch (err) {
+        console.error('Policy load error:', err);
+        showAlert('error', 'Could not load policies');
+    }
+}
+
+function renderPolicyTable(policies) {
+    const body = document.getElementById('policy-table-body');
+    const empty = document.getElementById('policy-empty');
+
+    if (!policies.length) {
+        body.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+    }
+
+    empty.classList.add('hidden');
+
+    body.innerHTML = policies.map(p => {
+        const statusClass = `status-${p.status.toLowerCase()}`;
+        const statusIcons = { Active: '🔵', Paid: '✅', Overdue: '⚠️', Lapsed: '❌' };
+        const waPhone = normalizePhone(p.phone);
+
+        return `
+            <tr>
+                <td><strong>${escapeHtml(p.client_name)}</strong></td>
+                <td class="font-mono">${escapeHtml(p.policy_number)}</td>
+                <td class="text-right">₹${formatNum(p.premium_amount)}</td>
+                <td><span class="mode-tag">${escapeHtml(p.premium_mode)}</span></td>
+                <td>${formatDate(p.fup_date)}</td>
+                <td>${formatDate(p.next_due_date)}</td>
+                <td><span class="status-badge ${statusClass}">${statusIcons[p.status] || ''} ${p.status}</span></td>
+                <td>${p.phone ? escapeHtml(p.phone) : '<span style="color:var(--text-muted)">—</span>'}</td>
+                <td>
+                    <div style="display:flex; gap:.3rem">
+                        <button class="btn-icon" onclick="openPolicyModal(${p.id})" title="Edit">✏️</button>
+                        ${waPhone ? `<a class="btn-icon" href="${whatsappLink(waPhone, buildReminder(p))}" target="_blank" title="WhatsApp">💬</a>` : ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function buildReminder(policy) {
+    const name = policy.client_name || 'Client';
+    return (
+        `Hi ${name},\n\n` +
+        `This is a friendly reminder regarding your LIC policy ` +
+        `*No. ${policy.policy_number}*.\n` +
+        `The premium of *₹${formatNum(policy.premium_amount)}* is due on ` +
+        `*${formatDate(policy.next_due_date || policy.fup_date)}*.\n\n` +
+        `Please clear the payment at the earliest to keep your ` +
+        `policy active. Let me know if you need any assistance!`
+    );
+}
+
+
+// ── Policy Modal ─────────────────────────────────────────────────
+
+async function openPolicyModal(id) {
+    const modal = document.getElementById('policy-modal');
+    const body = document.getElementById('modal-body');
+    const title = document.getElementById('modal-title');
+
+    try {
+        const data = await apiGet(`/api/policies/${id}`);
+        const p = data.policy;
+        const comms = data.commissions || [];
+
+        title.textContent = `${p.client_name} — ${p.policy_number}`;
+
+        let commHtml = '';
+        if (comms.length) {
+            commHtml = `
+                <div class="commission-history">
+                    <h4>💰 Commission History (${comms.length})</h4>
+                    ${comms.map(c => `
+                        <div class="commission-item">
+                            <span>₹${formatNum(c.commission_amount)}</span>
+                            <span>${formatDate(c.payment_date)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        body.innerHTML = `
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label>Client Name</label>
+                    <input type="text" id="edit-name" value="${escapeHtml(p.client_name)}">
+                </div>
+                <div class="modal-field">
+                    <label>Policy Number</label>
+                    <input type="text" value="${escapeHtml(p.policy_number)}" disabled>
+                </div>
+            </div>
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label>Premium Amount</label>
+                    <input type="number" id="edit-amount" value="${p.premium_amount}">
+                </div>
+                <div class="modal-field">
+                    <label>Premium Mode</label>
+                    <select id="edit-mode">
+                        ${['Monthly','Quarterly','Half-Yearly','Yearly'].map(m =>
+                            `<option value="${m}" ${m === p.premium_mode ? 'selected' : ''}>${m}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label>Phone Number</label>
+                    <input type="tel" id="edit-phone" value="${escapeHtml(p.phone || '')}" placeholder="e.g. 9876543210">
+                </div>
+                <div class="modal-field">
+                    <label>Status</label>
+                    <select id="edit-status">
+                        ${['Active','Paid','Overdue','Lapsed'].map(s =>
+                            `<option value="${s}" ${s === p.status ? 'selected' : ''}>${s}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-row">
+                <div class="modal-field">
+                    <label>FUP Date</label>
+                    <input type="date" id="edit-fup" value="${p.fup_date || ''}">
+                </div>
+                <div class="modal-field">
+                    <label>Next Due Date</label>
+                    <input type="date" id="edit-nextdue" value="${p.next_due_date || ''}">
+                </div>
+            </div>
+            ${commHtml}
+            <div class="modal-actions">
+                <button class="btn btn-danger btn-sm" onclick="deletePolicy(${p.id})">🗑️ Delete</button>
+                <button class="btn btn-secondary btn-sm" id="modal-close-btn">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="savePolicy(${p.id})">💾 Save Changes</button>
+            </div>
+        `;
+
+        document.getElementById('modal-close-btn').addEventListener('click', closePolicyModal);
+        modal.classList.remove('hidden');
+    } catch (err) {
+        showAlert('error', 'Could not load policy details');
+        console.error(err);
+    }
+}
+
+function closePolicyModal() {
+    document.getElementById('policy-modal').classList.add('hidden');
+}
+
+async function savePolicy(id) {
+    try {
+        const body = {
+            client_name:    document.getElementById('edit-name').value.trim(),
+            premium_amount: parseFloat(document.getElementById('edit-amount').value) || 0,
+            premium_mode:   document.getElementById('edit-mode').value,
+            phone:          document.getElementById('edit-phone').value.trim(),
+            status:         document.getElementById('edit-status').value,
+            fup_date:       document.getElementById('edit-fup').value,
+            next_due_date:  document.getElementById('edit-nextdue').value,
+        };
+
+        await apiPut(`/api/policies/${id}`, body);
+        showAlert('success', 'Policy updated successfully');
+        closePolicyModal();
+        loadPolicies();
+    } catch (err) {
+        showAlert('error', 'Failed to update policy');
+        console.error(err);
+    }
+}
+
+async function deletePolicy(id) {
+    if (!confirm('Are you sure you want to delete this policy?')) return;
+
+    try {
+        await apiDelete(`/api/policies/${id}`);
+        showAlert('success', 'Policy deleted');
+        closePolicyModal();
+        loadPolicies();
+    } catch (err) {
+        showAlert('error', 'Failed to delete policy');
+        console.error(err);
+    }
+}
+
+
+// ── CSV Export ────────────────────────────────────────────────────
+
+async function exportPoliciesCsv() {
+    try {
+        const search = document.getElementById('policy-search')?.value || '';
+        const mode = document.getElementById('filter-mode')?.value || '';
+        const status = document.getElementById('filter-status')?.value || '';
+
+        const params = new URLSearchParams();
+        if (search) params.set('search', search);
+        if (mode) params.set('mode', mode);
+        if (status) params.set('status', status);
+
+        const data = await apiGet(`/api/policies?${params}`);
+
+        if (!data.policies.length) {
+            showAlert('warning', 'No policies to export');
+            return;
+        }
+
+        const cols = ['client_name', 'policy_number', 'premium_amount', 'premium_mode', 'fup_date', 'next_due_date', 'status', 'phone'];
+        const headers = ['Client Name', 'Policy Number', 'Premium Amount', 'Premium Mode', 'FUP Date', 'Next Due Date', 'Status', 'Phone'];
+
+        const escapeCsv = (v) => {
+            const s = v == null ? '' : String(v);
+            return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+
+        const lines = [headers.map(escapeCsv).join(',')];
+        for (const p of data.policies) {
+            lines.push(cols.map(c => escapeCsv(p[c])).join(','));
+        }
+
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lic_policies_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        showAlert('success', `Exported ${data.policies.length} policies to CSV`);
+    } catch (err) {
+        showAlert('error', 'Export failed');
+        console.error(err);
+    }
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  INSIGHTS TAB
+// ══════════════════════════════════════════════════════════════════
+
+async function loadInsights() {
+    try {
+        const data = await apiGet('/api/stats/insights');
+        const grid = document.getElementById('insights-grid');
+        const empty = document.getElementById('insights-empty');
+
+        if (!data.insights.length) {
+            grid.innerHTML = '';
+            empty.classList.remove('hidden');
+            return;
+        }
+
+        empty.classList.add('hidden');
+
+        grid.innerHTML = data.insights.map(insight => {
+            let dataHtml = '';
+
+            if (insight.data && Array.isArray(insight.data)) {
+                const items = insight.data.slice(0, 6);
+                dataHtml = `
+                    <ul class="insight-data-list">
+                        ${items.map(item => {
+                            // Handle different data shapes
+                            if (item.policy_number && item.client_name) {
+                                return `<li>
+                                    <span>${escapeHtml(item.client_name)} (${escapeHtml(item.policy_number)})</span>
+                                    <span>${item.premium_amount ? '₹' + formatNum(item.premium_amount) : ''}${item.commission_amount ? '₹' + formatNum(item.commission_amount) : ''}${item.total_premium ? '₹' + formatNum(item.total_premium) : ''}</span>
+                                </li>`;
+                            }
+                            if (item.premium_mode) {
+                                return `<li><span>${item.premium_mode}</span><span>${item.count} policies</span></li>`;
+                            }
+                            if (item.client_name && item.policies) {
+                                return `<li><span>${escapeHtml(item.client_name)}</span><span>${item.policies} policies — ₹${formatNum(item.total_premium)}</span></li>`;
+                            }
+                            return `<li>${JSON.stringify(item)}</li>`;
+                        }).join('')}
+                    </ul>
+                `;
+            }
+
+            return `
+                <div class="insight-card type-${insight.type}">
+                    <div class="insight-card-head">
+                        <span class="insight-card-icon">${insight.icon}</span>
+                        <span class="insight-card-title">${escapeHtml(insight.title)}</span>
+                    </div>
+                    <div class="insight-card-desc">${escapeHtml(insight.description)}</div>
+                    ${dataHtml}
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Insights load error:', err);
+    }
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  INITIALIZATION
+// ══════════════════════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', () => {
+    initTabs();
+    initUploads();
+    initPolicyFilters();
+
+    // Modal close
+    document.getElementById('modal-close').addEventListener('click', closePolicyModal);
+    document.getElementById('policy-modal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closePolicyModal();
     });
 
-    if (searchInput) {
-        searchInput.addEventListener('input', () => {
-            if (!globalData.length) return;
-            applySearch(searchInput.value);
-        });
-    }
-
-    if (exportCsvButton) {
-        exportCsvButton.addEventListener('click', () => {
-            const dataToExport = filteredData.length ? filteredData : globalData;
-            if (!dataToExport.length) {
-                showAlert('warning', 'Nothing to export yet. Upload a file first.');
-                return;
-            }
-
-            const columns = buildExportColumns(dataToExport);
-            const csv = toCsv(dataToExport, columns);
-            downloadTextFile(csv, `lic_due_list_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
-            showAlert('success', `Exported ${dataToExport.length} records to CSV.`);
-        });
-    }
-
-    if (branchSelect) {
-        branchSelect.addEventListener('change', () => {
-            openBranchPreview(branchSelect.value);
-        });
-    }
-
-    if (previewBranchButton) {
-        previewBranchButton.addEventListener('click', () => {
-            if (branchSelect?.value) {
-                openBranchPreview(branchSelect.value);
-            }
-        });
-    }
-
-    loadRepoBranches();
-    hydrateDashboardFromCache();
+    // Load initial dashboard data
+    loadDashboard();
 });
+
+// Expose modal functions globally for inline onclick handlers
+window.openPolicyModal = openPolicyModal;
+window.savePolicy = savePolicy;
+window.deletePolicy = deletePolicy;

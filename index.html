@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LIC Branch Premium Dashboard</title>
-    <meta name="description" content="Branch-ready premium reminder dashboard for LIC agents. Upload due lists, review policy data, and send WhatsApp reminders instantly.">
+    <title>LIC Premium Dashboard — Policy Management</title>
+    <meta name="description" content="Full-stack LIC premium dashboard with policy database, commission tracking, premium mode management, and intelligent FUP date auto-calculation.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">
@@ -16,151 +16,240 @@
             <div class="brand-mark" aria-hidden="true">LIC</div>
             <div class="brand-copy">
                 <div class="brand-name">Life Insurance Corporation of India</div>
-                <div class="brand-note">Branch premium reminder workspace</div>
+                <div class="brand-note">Policy management &amp; premium tracking</div>
             </div>
             <div class="brand-pills">
-                <span class="brand-pill">Branch preview</span>
-                <span class="brand-pill">Local browser processing</span>
+                <span class="brand-pill">SQLite database</span>
+                <span class="brand-pill">Smart FUP tracking</span>
                 <span class="brand-pill">WhatsApp ready</span>
             </div>
         </div>
 
+        <!-- Tab Navigation -->
+        <nav class="tab-nav" aria-label="Main navigation">
+            <button class="tab-btn active" data-tab="dashboard" id="tab-dashboard">
+                <span class="tab-icon">📊</span> Dashboard
+            </button>
+            <button class="tab-btn" data-tab="upload" id="tab-upload">
+                <span class="tab-icon">📁</span> Upload
+            </button>
+            <button class="tab-btn" data-tab="policies" id="tab-policies">
+                <span class="tab-icon">📋</span> Policy Database
+            </button>
+            <button class="tab-btn" data-tab="insights" id="tab-insights">
+                <span class="tab-icon">💡</span> Insights
+            </button>
+        </nav>
+
         <main class="app">
-            <!-- Hero Header -->
-            <header class="hero">
-                <div class="hero-copy">
-                    <div class="hero-badge">LIC style dashboard</div>
-                    <h1>Premium Reminder Dashboard</h1>
-                    <p class="hero-sub">Upload branch due lists, review policy data, and send WhatsApp reminders with a clean LIC-inspired interface.</p>
-                </div>
-                <aside class="hero-panel" aria-label="Workspace highlights">
-                    <div class="hero-panel-title">Branch-ready workflow</div>
-                    <div class="hero-stats">
-                        <div class="hero-stat">
-                            <span class="hero-stat-value">All</span>
-                            <span class="hero-stat-label">branches supported</span>
-                        </div>
-                        <div class="hero-stat">
-                            <span class="hero-stat-value">3</span>
-                            <span class="hero-stat-label">file formats</span>
-                        </div>
-                        <div class="hero-stat">
-                            <span class="hero-stat-value">100%</span>
-                            <span class="hero-stat-label">browser-only</span>
-                        </div>
-                    </div>
-                </aside>
-            </header>
 
-            <!-- Upload Zone -->
-            <section class="section" id="upload-section">
-                <div class="dropzone" id="dropzone">
-                    <div class="dropzone-inner">
-                        <div class="dropzone-icon">📁</div>
-                        <h3>Drop your file here</h3>
-                        <p>or choose a file to begin</p>
-                        <div class="dropzone-actions">
-                            <button type="button" class="browse-btn" id="browse-button">Choose file</button>
-                            <span class="dropzone-badge">Excel &bull; CSV &bull; PDF</span>
-                        </div>
+            <!-- ═══════════════ TAB: Dashboard ═══════════════ -->
+            <section class="tab-content active" id="content-dashboard">
+                <header class="hero">
+                    <div class="hero-copy">
+                        <div class="hero-badge">Policy Management Dashboard</div>
+                        <h1>Premium Tracker</h1>
+                        <p class="hero-sub">Upload due lists &amp; commission files. The system auto-tracks premiums, advances FUP dates, and identifies overdue policies.</p>
                     </div>
-                    <input type="file" id="file-input" accept=".xlsx,.csv,.pdf" hidden>
+                    <aside class="hero-panel" aria-label="Quick stats">
+                        <div class="hero-panel-title">Live Database Stats</div>
+                        <div class="hero-stats">
+                            <div class="hero-stat">
+                                <span class="hero-stat-value" id="stat-policies">0</span>
+                                <span class="hero-stat-label">total policies</span>
+                            </div>
+                            <div class="hero-stat">
+                                <span class="hero-stat-value" id="stat-premium">₹0</span>
+                                <span class="hero-stat-label">total premium</span>
+                            </div>
+                            <div class="hero-stat">
+                                <span class="hero-stat-value" id="stat-collection">0%</span>
+                                <span class="hero-stat-label">collection rate</span>
+                            </div>
+                        </div>
+                    </aside>
+                </header>
+
+                <!-- Dashboard Metrics -->
+                <div class="metrics" id="dash-metrics"></div>
+
+                <!-- Quick Alerts -->
+                <div id="dash-alerts"></div>
+
+                <!-- Recent Uploads -->
+                <div class="card" id="recent-uploads-card" style="display:none">
+                    <div class="card-header">
+                        <h2>Recent Uploads</h2>
+                        <p class="card-sub">Last 5 file uploads processed</p>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="recent-uploads-table">
+                            <thead>
+                                <tr><th>File</th><th>Type</th><th>Records</th><th>Date</th></tr>
+                            </thead>
+                            <tbody id="recent-uploads-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
-            <section class="branch-banner" aria-label="Branch coverage">
-                <div>
-                    <div class="branch-banner-title">Built for every LIC branch</div>
-                    <div class="branch-banner-text">Use one workflow across branch offices, divisions, and agent lists without changing your process.</div>
+            <!-- ═══════════════ TAB: Upload ═══════════════ -->
+            <section class="tab-content" id="content-upload">
+                <div class="upload-header">
+                    <h2>Upload Files</h2>
+                    <p class="card-sub">Upload due lists to add/update policies, or commission lists to record payments and auto-advance FUP dates.</p>
                 </div>
-                <div class="branch-banner-chip">Branch-wise premiums</div>
+
+                <div class="upload-grid">
+                    <!-- Due List Upload -->
+                    <div class="upload-card">
+                        <div class="upload-card-icon">📋</div>
+                        <h3>Due List Upload</h3>
+                        <p>Upload branch due lists (Excel/CSV). New policies are created, existing ones are updated. Phone numbers and premium modes are preserved.</p>
+                        <div class="upload-card-cols">
+                            <span class="upload-col-tag">Client Name</span>
+                            <span class="upload-col-tag">Policy No</span>
+                            <span class="upload-col-tag">Premium</span>
+                            <span class="upload-col-tag">FUP Date</span>
+                            <span class="upload-col-tag opt">Phone</span>
+                            <span class="upload-col-tag opt">Mode</span>
+                        </div>
+                        <div class="dropzone" id="dropzone-duelist">
+                            <div class="dropzone-inner">
+                                <div class="dropzone-icon">📁</div>
+                                <h3>Drop due list here</h3>
+                                <p>or click to browse</p>
+                                <span class="dropzone-badge">Excel &bull; CSV</span>
+                            </div>
+                            <input type="file" id="file-duelist" accept=".xlsx,.xls,.csv" hidden>
+                        </div>
+                        <div id="duelist-result" class="upload-result"></div>
+                    </div>
+
+                    <!-- Commission Upload -->
+                    <div class="upload-card">
+                        <div class="upload-card-icon">💰</div>
+                        <h3>Commission Upload</h3>
+                        <p>Upload commission statements. Payments are matched to policies, and FUP dates automatically advance based on the premium mode.</p>
+                        <div class="upload-card-cols">
+                            <span class="upload-col-tag">Policy No</span>
+                            <span class="upload-col-tag">Commission Amt</span>
+                            <span class="upload-col-tag opt">Payment Date</span>
+                        </div>
+                        <div class="dropzone" id="dropzone-commission">
+                            <div class="dropzone-inner">
+                                <div class="dropzone-icon">💰</div>
+                                <h3>Drop commission file here</h3>
+                                <p>or click to browse</p>
+                                <span class="dropzone-badge">Excel &bull; CSV</span>
+                            </div>
+                            <input type="file" id="file-commission" accept=".xlsx,.xls,.csv" hidden>
+                        </div>
+                        <div id="commission-result" class="upload-result"></div>
+                    </div>
+                </div>
+
+                <!-- Upload History -->
+                <div class="card" style="margin-top:1.5rem">
+                    <div class="card-header">
+                        <h2>Upload History</h2>
+                        <p class="card-sub">All processed file uploads</p>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>File Name</th><th>Type</th><th>Records</th><th>Uploaded At</th></tr>
+                            </thead>
+                            <tbody id="upload-history-body"></tbody>
+                        </table>
+                    </div>
+                </div>
             </section>
 
-            <section class="section branches-panel" aria-labelledby="branches-panel-title">
-                <div class="card-header branches-header">
-                    <div>
-                        <h2 id="branches-panel-title">Branch Preview</h2>
-                        <p class="card-sub">Select a branch from the dropdown to preview it live.</p>
+            <!-- ═══════════════ TAB: Policy Database ═══════════════ -->
+            <section class="tab-content" id="content-policies">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Policy Database</h2>
+                        <p class="card-sub">All policies stored in the system. Click a row to edit or view commission history.</p>
                     </div>
-                    <div class="branches-toolbar">
-                        <label class="branches-select-wrap" for="branch-select">
-                            <span class="sr-only">Preview a branch</span>
-                            <select id="branch-select" class="branches-select" aria-label="Preview a branch"></select>
-                        </label>
-                        <button type="button" id="preview-branch-button" class="browse-btn branches-preview-button">Open preview</button>
+                    <div class="table-toolbar">
+                        <input type="text" id="policy-search" class="search-input" placeholder="Search by name, policy number, or phone..." aria-label="Search policies">
+                        <select id="filter-mode" class="filter-select" aria-label="Filter by mode">
+                            <option value="">All Modes</option>
+                            <option value="Monthly">Monthly</option>
+                            <option value="Quarterly">Quarterly</option>
+                            <option value="Half-Yearly">Half-Yearly</option>
+                            <option value="Yearly">Yearly</option>
+                        </select>
+                        <select id="filter-status" class="filter-select" aria-label="Filter by status">
+                            <option value="">All Status</option>
+                            <option value="Active">Active</option>
+                            <option value="Paid">Paid</option>
+                            <option value="Overdue">Overdue</option>
+                            <option value="Lapsed">Lapsed</option>
+                        </select>
+                        <button type="button" id="export-csv-btn" class="btn btn-secondary">Export CSV</button>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="policy-table">
+                            <thead>
+                                <tr>
+                                    <th>Client Name</th>
+                                    <th>Policy No</th>
+                                    <th>Premium</th>
+                                    <th>Mode</th>
+                                    <th>FUP Date</th>
+                                    <th>Next Due</th>
+                                    <th>Status</th>
+                                    <th>Phone</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="policy-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div id="policy-empty" class="empty-state hidden">
+                        <div class="empty-icon">📋</div>
+                        <p>No policies in the database yet. Upload a due list to get started.</p>
                     </div>
                 </div>
-                <p id="branches-status" class="branches-status">Loading branches from GitHub…</p>
-                <div class="branch-preview-shell">
-                    <div class="branch-preview-head">
-                        <div>
-                            <div class="branch-preview-kicker">Branch Preview</div>
-                            <div class="branch-preview-label" id="branch-preview-label">master</div>
+
+                <!-- Policy Detail / Edit Modal -->
+                <div id="policy-modal" class="modal-overlay hidden">
+                    <div class="modal-card">
+                        <div class="modal-header">
+                            <h3 id="modal-title">Policy Details</h3>
+                            <button class="modal-close" id="modal-close">&times;</button>
                         </div>
-                        <a id="branch-preview-open" class="branch-preview-open" href="https://github.com/trambak001/LIC-Agent-/tree/master" target="_blank" rel="noreferrer">Open in GitHub</a>
+                        <div id="modal-body" class="modal-body"></div>
                     </div>
-                    <iframe id="branch-preview-frame" class="branch-preview-frame" title="Branch preview" loading="lazy"></iframe>
+                </div>
+            </section>
+
+            <!-- ═══════════════ TAB: Insights ═══════════════ -->
+            <section class="tab-content" id="content-insights">
+                <div class="insights-header">
+                    <h2>Smart Insights</h2>
+                    <p class="card-sub">Intelligent analysis of your policy database — overdue alerts, upcoming dues, collection stats, and more.</p>
+                </div>
+                <div id="insights-grid" class="insights-grid"></div>
+                <div id="insights-empty" class="empty-state hidden">
+                    <div class="empty-icon">💡</div>
+                    <p>Upload some data first to see intelligent insights.</p>
                 </div>
             </section>
 
             <!-- Alerts -->
             <div id="alerts"></div>
 
-            <!-- Loading Spinner -->
-            <div id="loading" class="loading hidden">
-                <div class="spinner"></div>
-                <p>Parsing your file&hellip;</p>
-            </div>
-
-            <!-- Results (hidden until file parsed) -->
-            <section id="results" class="section hidden">
-                <!-- Metrics -->
-                <div class="metrics" id="metrics"></div>
-
-                <!-- Data Table -->
-                <div class="card">
-                    <div class="card-header">
-                        <h2>This Month's Due List</h2>
-                        <p class="card-sub">A clean branch view of the parsed records</p>
-                    </div>
-                    <div class="table-toolbar">
-                        <input type="text" id="search-input" class="search-input" placeholder="Search by client name, policy number, or amount..." aria-label="Search due list">
-                        <button type="button" id="export-csv-btn" class="btn btn-secondary">Export Filtered List</button>
-                    </div>
-                    <div class="table-wrap">
-                        <table id="data-table">
-                            <thead id="table-head"></thead>
-                            <tbody id="table-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Action Center -->
-                <div class="card">
-                    <div class="card-header">
-                        <h2>Action Center</h2>
-                        <p class="card-sub">Expand each client to preview and send reminders</p>
-                    </div>
-                    <div id="action-list"></div>
-                </div>
-            </section>
-
             <!-- Footer -->
             <footer class="footer">
-                <p>Built for LIC agents &bull; Data stays in your browser &bull; Nothing is uploaded to any server</p>
+                <p>Built for LIC agents &bull; Data stored in local SQLite database &bull; Powered by Node.js</p>
             </footer>
         </main>
     </div>
 
-    <!-- Libraries (CDN) -->
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-        if (typeof pdfjsLib !== 'undefined') {
-            pdfjsLib.GlobalWorkerOptions.workerSrc =
-                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        }
-    </script>
     <script src="app.js"></script>
 </body>
 </html>
